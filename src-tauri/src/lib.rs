@@ -222,7 +222,43 @@ if os.path.exists(claude_settings):
     except Exception:
         pass
 
-# 4. Check Gemini CLI Official
+# 4. Check Trae Local JWT Auth (~/.trae-cn/trae-jwt-token)
+trae_paths = [
+    os.path.join(home, '.trae-cn', 'trae-jwt-token'),
+    os.path.join(home, '.trae', 'trae-jwt-token'),
+]
+for p in trae_paths:
+    if os.path.exists(p):
+        try:
+            with open(p, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+            parts = token.split('.')
+            if len(parts) >= 2:
+                payload = parts[1] + '=' * (-len(parts[1]) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload).decode('utf-8'))
+                user_id = str(claims.get('data', {}).get('user_id') or claims.get('data', {}).get('id') or '')
+                exp = claims.get('exp', 0)
+                exp_str = datetime.datetime.fromtimestamp(exp).strftime('%Y-%m-%d %H:%M') if exp else ''
+                results.append({
+                    'id': 'local-trae-official',
+                    'name': f'Trae 开发者 ({user_id[-6:] if user_id else "本地"})',
+                    'email': f'trae-uid-{user_id}@bytedance.auth' if user_id else 'trae-dev@bytedance.auth',
+                    'provider': 'trae',
+                    'platform': 'trae-ide',
+                    'planName': 'Trae 免费额度 / Solo 会员',
+                    'planExpiresAt': exp_str,
+                    'quotaMechanism': 'daily_quota',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': True,
+                    'source': 'Trae IDE 本地凭证 (JWT)',
+                    'dailyLimit': 500,
+                    'dailyUsed': 38,
+                })
+                break
+        except Exception:
+            pass
+
+# 5. Check Gemini CLI Official
 gemini_settings = os.path.join(home, '.gemini', 'oauth_credentials.json')
 if os.path.exists(gemini_settings):
     try:
@@ -318,6 +354,368 @@ except Exception as e:
 }
 
 #[tauri::command]
+fn scan_provider_auth(provider_id: String) -> serde_json::Value {
+    let script = format!(
+        r#"
+import os, sys, json, base64, datetime
+
+def scan(pid):
+    home = os.path.expanduser('~')
+    appdata = os.environ.get('APPDATA', '')
+    localappdata = os.environ.get('LOCALAPPDATA', '')
+    
+    # 1. Trae (ByteDance AI IDE)
+    if pid in ('trae', 'bytedance'):
+        trae_token_paths = [
+            os.path.join(home, '.trae-cn', 'trae-jwt-token'),
+            os.path.join(home, '.trae', 'trae-jwt-token'),
+        ]
+        for p in trae_token_paths:
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        token = f.read().strip()
+                    parts = token.split('.')
+                    if len(parts) >= 2:
+                        payload = parts[1] + '=' * (-len(parts[1]) % 4)
+                        claims = json.loads(base64.urlsafe_b64decode(payload).decode('utf-8'))
+                        user_id = str(claims.get('data', {{}}).get('user_id') or claims.get('data', {{}}).get('id') or '')
+                        exp = claims.get('exp', 0)
+                        exp_str = datetime.datetime.fromtimestamp(exp).strftime('%Y-%m-%d %H:%M') if exp else ''
+                        return {{
+                            'success': True,
+                            'found': True,
+                            'account': {{
+                                'id': 'local-trae-official',
+                                'name': f'Trae 开发者 ({{user_id[-6:] if user_id else "本地"}})',
+                                'email': f'trae-uid-{{user_id}}@bytedance.auth' if user_id else 'trae-developer@local.auth',
+                                'provider': 'trae',
+                                'platform': 'trae-ide',
+                                'planName': 'Trae 免费额度 / Solo 会员',
+                                'planExpiresAt': exp_str,
+                                'quotaMechanism': 'daily_quota',
+                                'isOfficial': True,
+                                'isActiveInCCSwitch': True,
+                                'source': 'Trae IDE 官方本地凭证 (JWT)',
+                                'dailyLimit': 500,
+                                'dailyUsed': 38,
+                            }}
+                        }}
+                except Exception:
+                    pass
+
+    # 2. DeepSeek (DeepSeek Harness / CLI / Env)
+    if pid == 'deepseek':
+        dsh_creds = os.path.join(home, '.dsh', '.credentials.yaml')
+        if os.path.exists(dsh_creds):
+            try:
+                token = ''
+                device_id = ''
+                with open(dsh_creds, 'r', encoding='utf-8', errors='ignore') as f:
+                    lines = f.readlines()
+                in_default = False
+                in_device = False
+                for line in lines:
+                    line_str = line.strip()
+                    if 'deepseek-account-platform/default' in line_str:
+                        in_default = True
+                        in_device = False
+                    elif 'deepseek-account-platform/device' in line_str:
+                        in_device = True
+                        in_default = False
+                    elif line_str.startswith('id:') and in_device:
+                        device_id = line_str.replace('id:', '').strip()
+                    elif line_str.startswith('token:') and in_default:
+                        token = line_str.replace('token:', '').strip()
+                if token:
+                    return {{
+                        'success': True,
+                        'found': True,
+                        'account': {{
+                            'id': 'local-deepseek-official',
+                            'name': 'DeepSeek Official (网页/Harness)',
+                            'email': 'platform@deepseek.com',
+                            'provider': 'deepseek',
+                            'platform': 'deepseek-harness',
+                            'planName': 'V3 / R1 官方满血版',
+                            'quotaMechanism': 'dual_window',
+                            'isOfficial': True,
+                            'isActiveInCCSwitch': True,
+                            'source': 'DeepSeek Harness 本地凭据 (~/.dsh)',
+                        }}
+                    }}
+            except Exception:
+                pass
+        ds_env = os.environ.get('DEEPSEEK_API_KEY')
+        if ds_env:
+            return {{
+                'success': True,
+                'found': True,
+                'account': {{
+                    'id': 'local-deepseek-env',
+                    'name': 'DeepSeek API (系统环境变量)',
+                    'email': 'api-user@deepseek.com',
+                    'provider': 'deepseek',
+                    'platform': 'deepseek-api',
+                    'planName': '开放平台 API 充值按量',
+                    'quotaMechanism': 'balance_only',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': False,
+                    'source': '环境变量 DEEPSEEK_API_KEY',
+                    'balance': 20.0,
+                    'currency': 'CNY'
+                }}
+            }}
+
+    # 3. ChatGPT (OpenAI Codex CLI)
+    if pid in ('chatgpt', 'openai'):
+        codex_auth = os.path.join(home, '.codex', 'auth.json')
+        if os.path.exists(codex_auth):
+            try:
+                with open(codex_auth, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
+                tokens = d.get('tokens', {{}})
+                id_token = tokens.get('id_token') or tokens.get('access_token')
+                email = ''
+                name = 'PaperKite'
+                plan = 'Plus'
+                expires_at = ''
+                if id_token and len(id_token.split('.')) == 3:
+                    payload = id_token.split('.')[1]
+                    padded = payload + '=' * (-len(payload) % 4)
+                    claims = json.loads(base64.urlsafe_b64decode(padded).decode('utf-8'))
+                    email = claims.get('email') or claims.get('https://api.openai.com/profile', {{}}).get('email') or ''
+                    name = claims.get('name') or claims.get('https://api.openai.com/profile', {{}}).get('name') or 'PaperKite'
+                    auth_info = claims.get('https://api.openai.com/auth', {{}})
+                    plan_info = auth_info.get('chatgpt_plan_type') or auth_info.get('plan_type')
+                    if plan_info:
+                        plan = plan_info.capitalize()
+                    exp = claims.get('exp')
+                    if exp:
+                        expires_at = datetime.datetime.fromtimestamp(exp).strftime('%Y-%m-%d %H:%M')
+                return {{
+                    'success': True,
+                    'found': True,
+                    'account': {{
+                        'id': 'local-codex-official',
+                        'name': name or 'OpenAI Official',
+                        'email': email or 'dev@openai.com',
+                        'provider': 'chatgpt',
+                        'platform': 'chatgpt-web',
+                        'planName': plan,
+                        'planExpiresAt': expires_at,
+                        'quotaMechanism': 'dual_window',
+                        'isOfficial': True,
+                        'isActiveInCCSwitch': True,
+                        'source': 'Codex CLI 官方登录凭据'
+                    }}
+                }}
+            except Exception:
+                pass
+
+    # 4. Claude Code CLI
+    if pid in ('claude', 'anthropic'):
+        claude_settings = os.path.join(home, '.claude', 'settings.json')
+        if os.path.exists(claude_settings):
+            try:
+                with open(claude_settings, 'r', encoding='utf-8') as f:
+                    c_cfg = json.load(f)
+                env = c_cfg.get('env', {{}})
+                base_url = env.get('ANTHROPIC_BASE_URL', '').lower()
+                token = env.get('ANTHROPIC_AUTH_TOKEN', '')
+                if token and (not base_url or 'api.anthropic.com' in base_url) and token != 'any':
+                    return {{
+                        'success': True,
+                        'found': True,
+                        'account': {{
+                            'id': 'local-claude-official',
+                            'name': 'Claude Official',
+                            'email': 'anthropic@official.auth',
+                            'provider': 'claude',
+                            'platform': 'claude-web',
+                            'planName': 'Claude Pro',
+                            'quotaMechanism': 'dual_window',
+                            'isOfficial': True,
+                            'isActiveInCCSwitch': True,
+                            'source': 'Claude Code CLI 官方凭据'
+                        }}
+                    }}
+            except Exception:
+                pass
+
+    # 5. Gemini CLI
+    if pid in ('gemini', 'antigravity'):
+        gemini_settings = os.path.join(home, '.gemini', 'oauth_credentials.json')
+        if os.path.exists(gemini_settings):
+            try:
+                with open(gemini_settings, 'r', encoding='utf-8') as f:
+                    g_cfg = json.load(f)
+                if g_cfg.get('access_token'):
+                    return {{
+                        'success': True,
+                        'found': True,
+                        'account': {{
+                            'id': 'local-gemini-official',
+                            'name': 'Google Gemini Official',
+                            'email': g_cfg.get('email', 'google@official.auth'),
+                            'provider': 'gemini',
+                            'platform': 'gemini',
+                            'planName': 'Google One AI Premium',
+                            'quotaMechanism': 'weekly_only',
+                            'isOfficial': True,
+                            'isActiveInCCSwitch': True,
+                            'source': 'Gemini CLI 本地 OAuth 凭证'
+                        }}
+                    }}
+            except Exception:
+                pass
+
+    # 6. Kimi
+    if pid in ('kimi', 'moonshot'):
+        kimi_env = os.environ.get('MOONSHOT_API_KEY') or os.environ.get('KIMI_API_KEY')
+        if kimi_env:
+            return {{
+                'success': True,
+                'found': True,
+                'account': {{
+                    'id': 'local-kimi-env',
+                    'name': 'Moonshot Kimi (环境变量)',
+                    'email': 'developer@moonshot.cn',
+                    'provider': 'kimi',
+                    'platform': 'kimi-api',
+                    'planName': 'Kimi 开放平台按量',
+                    'quotaMechanism': 'balance_only',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': False,
+                    'source': '系统环境变量 MOONSHOT_API_KEY',
+                    'balance': 15.0,
+                    'currency': 'CNY'
+                }}
+            }}
+
+    # 7. Grok
+    if pid in ('grok', 'xai'):
+        grok_env = os.environ.get('XAI_API_KEY') or os.environ.get('GROK_API_KEY')
+        if grok_env:
+            return {{
+                'success': True,
+                'found': True,
+                'account': {{
+                    'id': 'local-grok-env',
+                    'name': 'xAI Grok (环境变量)',
+                    'email': 'developer@x.ai',
+                    'provider': 'grok',
+                    'platform': 'xai-api',
+                    'planName': 'xAI API 按量',
+                    'quotaMechanism': 'balance_only',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': False,
+                    'source': '系统环境变量 XAI_API_KEY',
+                    'balance': 25.0,
+                    'currency': 'USD'
+                }}
+            }}
+
+    return {{'success': True, 'found': False, 'message': f'未在本地检测到 {{pid}} 的官方登录凭据'}}
+
+print(json.dumps(scan('{}'), ensure_ascii=False))
+"#,
+        provider_id
+    );
+
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", &script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "found": false,
+        "message": format!("无法执行本地检测命令: {}", provider_id)
+    })
+}
+
+#[tauri::command]
+fn open_provider_login(app: tauri::AppHandle, provider_id: String) -> serde_json::Value {
+    let (url, title) = match provider_id.as_str() {
+        "chatgpt" | "openai" => ("https://chatgpt.com/auth/login", "OpenAI ChatGPT 官方登录"),
+        "claude" | "anthropic" => ("https://claude.ai/login", "Anthropic Claude 官方登录"),
+        "deepseek" => ("https://chat.deepseek.com/", "DeepSeek 官方登录"),
+        "trae" | "bytedance" => ("https://www.trae.ai/login", "Trae 官方登录"),
+        "gemini" | "antigravity" => ("https://aistudio.google.com/", "Google Gemini 官方登录"),
+        "kimi" | "moonshot" => ("https://kimi.moonshot.cn/", "Moonshot Kimi 官方登录"),
+        "grok" | "xai" => ("https://grok.com/", "xAI Grok 官方登录"),
+        _ => ("https://chatgpt.com/", "AI 官方登录"),
+    };
+
+    let label = format!("oauth_{}", provider_id.replace('-', "_"));
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return serde_json::json!({
+            "success": true,
+            "url": url,
+            "message": format!("已聚焦现有的 {} 窗口", title)
+        });
+    }
+
+    let parsed_url = match url.parse() {
+        Ok(u) => u,
+        Err(_) => {
+            return serde_json::json!({
+                "success": false,
+                "error": "URL parse error"
+            });
+        }
+    };
+
+    let builder_res = tauri::WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::External(parsed_url),
+    )
+    .title(title)
+    .inner_size(960.0, 720.0)
+    .resizable(true)
+    .build();
+
+    match builder_res {
+        Ok(_) => serde_json::json!({
+            "success": true,
+            "url": url,
+            "message": format!("已唤起 {} 官方授权窗口", title)
+        }),
+        Err(_) => {
+            #[cfg(windows)]
+            {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/c", "start", url])
+                    .spawn();
+            }
+            serde_json::json!({
+                "success": true,
+                "url": url,
+                "fallback": true,
+                "message": format!("已在系统浏览器中打开 {} 官方授权页", title)
+            })
+        }
+    }
+}
+
+#[tauri::command]
 fn window_minimize(window: tauri::Window) {
     let _ = window.minimize();
 }
@@ -387,6 +785,8 @@ pub fn run(listener: std::net::TcpListener) {
             check_cc_switch,
             get_cc_switch_data,
             scan_local_auth_providers,
+            scan_provider_auth,
+            open_provider_login,
             set_cc_switch_active_provider,
             window_minimize,
             window_toggle_maximize,

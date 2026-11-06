@@ -120,9 +120,9 @@ export const providersMeta: Record<string, ProviderMeta> = {
     accentGradient: 'from-indigo-500/20 via-purple-500/5 to-transparent',
     supportedModels: [],
     description: '',
-    quotaTypeLabel: 'Trae 订阅周期调用额度',
-    category: 'ecosystem',
-    isDefaultVisible: false,
+    quotaTypeLabel: '高级模型额度 (RPD) / 订阅额度',
+    category: 'official',
+    isDefaultVisible: true,
   },
   tokendance: {
     id: 'tokendance',

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, PlusCircle, Sparkles, Coins, Clock, Calendar } from 'lucide-react';
+import { X, Key, PlusCircle, Sparkles, Coins, Clock, Calendar, Globe } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
-import { scanLocalAuthProviders } from '../services/tauriBridge';
+import { scanProviderAuth, openProviderLogin } from '../services/tauriBridge';
 import { getPlansForProvider, QuotaMechanism } from '../mock/providerPlans';
+import { ProviderIcon } from './ProviderIcons';
 
 interface Props {
   isOpen: boolean;
@@ -72,26 +73,44 @@ export const AddAccountModal: React.FC<Props> = ({
     }
   };
 
-  // Auto scan local environment
-  const handleScanLocal = async () => {
+  const isProviderLocked = Boolean(initialProvider && initialProvider !== 'all');
+  const [scanFeedback, setScanFeedback] = useState<string | null>(null);
+
+  // Auto scan specific provider
+  const handleScanProvider = async (pid: string) => {
     setIsScanning(true);
+    setScanFeedback(null);
     try {
-      const res = await scanLocalAuthProviders();
-      if (res.success && res.accounts && res.accounts.length > 0) {
-        const match = res.accounts.find((a: any) => a.provider === selectedProviderId) || res.accounts[0];
-        if (match) {
-          setSelectedProviderId(match.provider);
-          setName(match.name || '');
-          setEmail(match.email || '');
-          if (match.planName) setPlanName(match.planName);
-          if (match.planExpiresAt) setPlanExpiresAt(match.planExpiresAt);
-          if (match.quotaMechanism) setQuotaMechanism(match.quotaMechanism);
-        }
+      const res = await scanProviderAuth(pid);
+      if (res.success && res.found && res.account) {
+        const match = res.account;
+        setSelectedProviderId(match.provider || pid);
+        setName(match.name || '');
+        setEmail(match.email || '');
+        if (match.planName) setPlanName(match.planName);
+        if (match.planExpiresAt) setPlanExpiresAt(match.planExpiresAt);
+        if (match.quotaMechanism) setQuotaMechanism(match.quotaMechanism);
+        if (match.currency) setBalanceCurrency(match.currency);
+        if (match.balance) setBalanceAmount(match.balance);
+        if (match.dailyLimit) setDailyLimit(match.dailyLimit);
+        setScanFeedback(`✅ 已自动抓取到本地官方凭据：${match.source || '本地登录会话'}`);
+      } else {
+        setScanFeedback(`ℹ️ ${res.message || '未在本地检索到此厂商登录态，请使用官方登录'}`);
       }
     } catch (e) {
       console.warn('Scan local error:', e);
+      setScanFeedback('❌ 检索本地凭据发生异常');
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  const handleOpenLogin = async (pid: string) => {
+    try {
+      const res = await openProviderLogin(pid);
+      setScanFeedback(`🌐 ${res.message || '已唤起官方登录界面'}。完成登录后点击【检测本地登录】即可同步！`);
+    } catch (e) {
+      setScanFeedback('❌ 唤起官方登录界面失败');
     }
   };
 
@@ -225,42 +244,103 @@ export const AddAccountModal: React.FC<Props> = ({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
-          {/* Quick Scan Action */}
-          <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-2.5 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
-              <div className="text-xs">
-                <span className="font-semibold text-blue-300">自动检测本地官方登录</span>
-                <p className="text-[10.5px] text-slate-400">智能扫描 Codex CLI、DeepSeek Harness 等本地授权会话</p>
+          {/* Feedback banner */}
+          {scanFeedback && (
+            <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-2.5 text-xs text-blue-200 flex items-center justify-between">
+              <span>{scanFeedback}</span>
+              <button
+                type="button"
+                onClick={() => setScanFeedback(null)}
+                className="text-slate-400 hover:text-slate-200 ml-2"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Provider Selection OR Locked Provider Info */}
+          {isProviderLocked ? (
+            <div className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-blue-950/20 p-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 border border-slate-800 text-blue-400 shrink-0">
+                  <ProviderIcon providerId={selectedProviderId} className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-100">
+                      {providersMeta[selectedProviderId]?.name || selectedProviderId}
+                    </span>
+                    <span className="rounded bg-blue-500/20 border border-blue-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
+                      当前选定厂商
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] text-slate-400 mt-0.5">自动联动该厂专属套餐、配额机制与本地凭据</p>
+                </div>
+              </div>
+
+              {/* Direct Actions for this provider */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleScanProvider(selectedProviderId)}
+                  disabled={isScanning}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-sm"
+                  title="精准抓取本地登录态与 Token"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {isScanning ? '检测中...' : '检测本地登录'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenLogin(selectedProviderId)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 transition-colors"
+                  title="调用官方登录界面，直接抓取账户信息"
+                >
+                  <Globe className="h-3.5 w-3.5" />
+                  官方登录
+                </button>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleScanLocal}
-              disabled={isScanning}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0 shadow-sm"
-            >
-              {isScanning ? '扫描中...' : '一键抓取'}
-            </button>
-          </div>
-
-          {/* Provider Selection */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
-              所属服务 / 厂商
-            </label>
-            <select
-              value={selectedProviderId}
-              onChange={(e) => setSelectedProviderId(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
-            >
-              {providerList.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-slate-300">
+                  所属服务 / 厂商
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleScanProvider(selectedProviderId)}
+                    disabled={isScanning}
+                    className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {isScanning ? '检测中...' : `检测 ${providersMeta[selectedProviderId]?.name || selectedProviderId} 本地凭证`}
+                  </button>
+                  <span className="text-slate-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenLogin(selectedProviderId)}
+                    className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <Globe className="h-3 w-3" />
+                    官方登录
+                  </button>
+                </div>
+              </div>
+              <select
+                value={selectedProviderId}
+                onChange={(e) => setSelectedProviderId(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+              >
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Account Name */}
           <div>

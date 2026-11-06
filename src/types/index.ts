@@ -40,7 +40,7 @@ export interface ProviderMeta {
   protocol?: 'openai' | 'newapi' | 'oneapi' | 'custom';
 }
 
-export type QuotaKind = 'rolling_window' | 'currency_balance' | 'periodic_tier';
+export type QuotaKind = 'rolling_window' | 'currency_balance' | 'periodic_tier' | 'daily_quota';
 
 export interface RollingWindowData {
   used: number;
@@ -80,6 +80,13 @@ export interface SevenDayQuotaData {
   label?: string; // 额度描述 (如 "25% 充沛")
 }
 
+export interface DailyQuotaData {
+  used: number;
+  limit: number;
+  resetsAt?: string;
+  cooldownSecondsRemaining?: number;
+}
+
 export interface QuotaSnapshot {
   timestamp: string;
   isHealthy: boolean;
@@ -89,6 +96,7 @@ export interface QuotaSnapshot {
   rollingWindow?: RollingWindowData;
   currencyBalance?: CurrencyBalanceData;
   periodicTier?: PeriodicTierData;
+  dailyQuota?: DailyQuotaData;
   sevenDayQuota?: SevenDayQuotaData; // 7天周度额度
   secondaryTiers?: SecondaryTierData[]; // 多阶配额
   planName?: string; // 套餐级别：Claude Pro, Team, Plus, Google AI Pro 等

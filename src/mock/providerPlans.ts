@@ -238,6 +238,32 @@ export const PROVIDER_PLANS: Record<string, PlanDefinition[]> = {
       badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' 
     },
   ],
+  trae: [
+    {
+      id: 'trae_free',
+      name: 'Trae 免费开发者版',
+      description: '每月 500 次高级模型 (Claude 3.7 / GPT-4o / R1) 免费配额',
+      quotaMechanism: 'daily_quota',
+      defaultDailyLimit: 500,
+      badgeClass: 'bg-blue-500/15 text-blue-300 border-blue-500/30 font-medium',
+    },
+    {
+      id: 'trae_solo_pro',
+      name: 'Trae Solo Pro 会员',
+      description: '高级模型无限制加速 + 深度智能体自动化',
+      quotaMechanism: 'daily_quota',
+      defaultDailyLimit: 2000,
+      badgeClass: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30 font-bold',
+    },
+    {
+      id: 'trae_team',
+      name: 'Trae 团队企业版',
+      description: '团队共享高级并发 + 企业代码安全审计',
+      quotaMechanism: 'daily_quota',
+      defaultDailyLimit: 5000,
+      badgeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    },
+  ],
 };
 
 // Fallback for custom or unlisted providers

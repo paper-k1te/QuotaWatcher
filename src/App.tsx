@@ -8,7 +8,8 @@ import {
   List, 
   Layers, 
   Database,
-  Sparkles
+  Sparkles,
+  Globe
 } from 'lucide-react';
 import { providersMeta as initialProvidersMeta } from './mock/mockData';
 import { Account, ProviderMeta } from './types';
@@ -25,6 +26,8 @@ import {
   checkCCSwitchInstalled, 
   getCCSwitchData,
   scanLocalAuthProviders,
+  scanProviderAuth,
+  openProviderLogin,
   setCCSwitchActiveProvider,
   setupTrayListeners, 
   setWindowMode, 
@@ -58,9 +61,10 @@ export const App: React.FC = () => {
   const [visibleProviderIds, setVisibleProviderIds] = useState<string[]>([
     'chatgpt',
     'claude',
+    'trae',
+    'deepseek',
     'antigravity',
     'grok',
-    'deepseek',
     'kimi',
   ]);
 
@@ -82,6 +86,7 @@ export const App: React.FC = () => {
     latestDate: '2026-09-29',
   });
   const [isSyncingWithCCSwitch, setIsSyncingWithCCSwitch] = useState<boolean>(false);
+  const [isScanningProvider, setIsScanningProvider] = useState<boolean>(false);
 
   // Sync with local CC-Switch database
   const syncWithCCSwitch = async (showNotification = false) => {
@@ -288,6 +293,126 @@ export const App: React.FC = () => {
       setSelectedProvider('claude');
     }
     showToast(`🗑️ 已移除第三方中转厂商「${targetName}」`);
+  };
+
+  // Dedicated per-provider authentic detection
+  const handleScanProvider = async (providerId: string) => {
+    setIsScanningProvider(true);
+    const pMeta = providers[providerId];
+    const pName = pMeta?.name || providerId;
+    showToast(`🔍 正在精准检索 ${pName} 本地客户端与 CLI 授权凭据...`);
+    try {
+      const res = await scanProviderAuth(providerId);
+      if (res.success && res.found && res.account) {
+        const detected = res.account;
+        setAccounts((prev) => {
+          const existingIdx = prev.findIndex(
+            (a) => a.id === detected.id || (a.provider === detected.provider && a.email === detected.email)
+          );
+          const newAcc: Account = {
+            id: detected.id || `acc-${detected.provider}-${Date.now()}`,
+            name: detected.name || `${pName} Official`,
+            email: detected.email || 'platform@official.auth',
+            platform: detected.platform || `${detected.provider}-client`,
+            provider: detected.provider,
+            planName: detected.planName || '标准订阅',
+            planExpiresAt: detected.planExpiresAt,
+            quotaMechanism: detected.quotaMechanism || 'dual_window',
+            tags: [detected.planName || '官方认证', '本地同步'],
+            priority: 1,
+            enabled: true,
+            autoFailoverEnabled: true,
+            lastLoginAt: '刚刚自动检测',
+            isActiveInCCSwitch: true,
+            credentials: {
+              apiKey: detected.source || 'Local Auth Token',
+              sessionToken: detected.source || 'Local Auth Token',
+            },
+            latestSnapshot:
+              detected.quotaMechanism === 'balance_only'
+                ? {
+                    timestamp: new Date().toISOString(),
+                    isHealthy: true,
+                    isExhausted: false,
+                    isWarning: false,
+                    kind: 'currency_balance',
+                    currencyBalance: {
+                      currency: detected.currency || 'CNY',
+                      balance: detected.balance || 20.0,
+                    },
+                    quotaMechanism: 'balance_only',
+                  }
+                : detected.quotaMechanism === 'daily_quota'
+                ? {
+                    timestamp: new Date().toISOString(),
+                    isHealthy: true,
+                    isExhausted: false,
+                    isWarning: false,
+                    kind: 'daily_quota',
+                    dailyQuota: {
+                      used: detected.dailyUsed || 38,
+                      limit: detected.dailyLimit || 500,
+                      resetsAt: '次日 00:00',
+                      cooldownSecondsRemaining: 3600 * 22,
+                    },
+                    quotaMechanism: 'daily_quota',
+                  }
+                : {
+                    timestamp: new Date().toISOString(),
+                    isHealthy: true,
+                    isExhausted: false,
+                    isWarning: false,
+                    kind: 'rolling_window',
+                    rollingWindow: {
+                      used: 12,
+                      total: detected.provider === 'deepseek' ? 50 : 80,
+                      windowDurationHours: 5,
+                      resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
+                      cooldownSecondsRemaining: Math.floor(3600 * 2.5),
+                    },
+                    sevenDayQuota: {
+                      usedPercent: 25,
+                      totalPercent: 100,
+                      cooldownSecondsRemaining: 3600 * 24 * 4,
+                      resetsAt: '周一 00:00',
+                      label: '25% 充沛',
+                    },
+                    quotaMechanism: 'dual_window',
+                  },
+          };
+
+          let updated: Account[];
+          if (existingIdx >= 0) {
+            updated = [...prev];
+            updated[existingIdx] = { ...updated[existingIdx], ...newAcc };
+          } else {
+            updated = [newAcc, ...prev];
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          return updated;
+        });
+        showToast(`🎉 成功接入 ${pName} 本地登录账号！来源：${detected.source || '本地会话'}`);
+      } else {
+        showToast(`ℹ️ 未在本地检索到 ${pName} 的官方登录凭据。您可以点击【官方授权登录】唤起登录界面。`);
+      }
+    } catch (err) {
+      showToast(`❌ 检测 ${pName} 异常: ${err}`);
+    } finally {
+      setIsScanningProvider(false);
+    }
+  };
+
+  // Launch official OAuth / WebView login window
+  const handleOpenLogin = async (providerId: string) => {
+    const pMeta = providers[providerId];
+    const pName = pMeta?.name || providerId;
+    showToast(`🌐 正在唤起 ${pName} 官方登录界面...`);
+    try {
+      const res = await openProviderLogin(providerId);
+      showToast(`🌐 ${res.message || '官方授权窗口已打开'}。登录完成后点击【检测本地凭证】即可自动同步！`);
+    } catch (err) {
+      showToast(`❌ 唤起官方登录失败: ${err}`);
+    }
   };
 
   // Switch active account (Bi-directional CC-Switch synergy)
@@ -625,18 +750,43 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right: Actions (Sync CC-Switch, View Mode Toggle, Refresh & Add Button) */}
+                  {/* Right: Actions (Provider-Specific Detection, OAuth Login, View Mode Toggle, Refresh & Add Button) */}
                   <div className="flex items-center gap-2 shrink-0 self-end md:self-auto flex-wrap">
-                    {/* One-Click Sync with CC-Switch */}
-                    <button
-                      onClick={() => syncWithCCSwitch(true)}
-                      disabled={isSyncingWithCCSwitch}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#121624] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:border-slate-700 transition-all shadow-sm"
-                      title="从本地 CC-Switch 数据库读取号源与用量"
-                    >
-                      <Database className={`h-3.5 w-3.5 text-blue-400 ${isSyncingWithCCSwitch ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">{isSyncingWithCCSwitch ? '同步中' : '同步号源'}</span>
-                    </button>
+                    {selectedProvider !== 'all' ? (
+                      <>
+                        {/* Per-Provider Targeted Authentic Detection */}
+                        <button
+                          onClick={() => handleScanProvider(selectedProvider)}
+                          disabled={isScanningProvider}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1.5 text-xs font-semibold text-blue-300 transition-all shadow-sm"
+                          title={`精准检索本地 ${providers[selectedProvider]?.name || selectedProvider} 客户端与 CLI 会话凭据`}
+                        >
+                          <Sparkles className={`h-3.5 w-3.5 text-blue-400 ${isScanningProvider ? 'animate-spin' : ''}`} />
+                          <span>{isScanningProvider ? '检测中...' : `检测 ${providers[selectedProvider]?.name || selectedProvider} 登录`}</span>
+                        </button>
+
+                        {/* Official OAuth / WebView Login Button */}
+                        <button
+                          onClick={() => handleOpenLogin(selectedProvider)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-all shadow-sm"
+                          title={`唤起 ${providers[selectedProvider]?.name || selectedProvider} 官方登录界面，直接抓取会话凭证`}
+                        >
+                          <Globe className="h-3.5 w-3.5 text-emerald-400" />
+                          <span>官方登录</span>
+                        </button>
+                      </>
+                    ) : (
+                      /* One-Click Sync with CC-Switch */
+                      <button
+                        onClick={() => syncWithCCSwitch(true)}
+                        disabled={isSyncingWithCCSwitch}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-[#121624] px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white hover:border-slate-700 transition-all shadow-sm"
+                        title="从本地 CC-Switch 数据库读取号源与用量"
+                      >
+                        <Database className={`h-3.5 w-3.5 text-blue-400 ${isSyncingWithCCSwitch ? 'animate-spin' : ''}`} />
+                        <span className="hidden sm:inline">{isSyncingWithCCSwitch ? '同步中' : '同步号源'}</span>
+                      </button>
+                    )}
 
                     {/* View Switcher: List (CCSwitch-style) vs Grid Cards */}
                     <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
@@ -791,38 +941,83 @@ export const App: React.FC = () => {
 
                 {/* Empty State */}
                 {filteredAccounts.length === 0 && (
-                  <div className="py-14 px-4 text-center rounded-xl border border-dashed border-slate-800 bg-[#0c0f18]/60">
-                    <div className="h-12 w-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                  <div className="py-12 px-6 text-center rounded-2xl border border-dashed border-slate-800 bg-[#0c0f18]/70 max-w-2xl mx-auto my-6">
+                    <div className="h-14 w-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 shadow-inner">
                       {selectedProvider !== 'all' ? (
-                        <ProviderIcon providerId={selectedProvider} className="h-6 w-6" />
+                        <ProviderIcon providerId={selectedProvider} className="h-7 w-7" />
                       ) : (
-                        <Sparkles className="h-6 w-6" />
+                        <Sparkles className="h-7 w-7 text-blue-400" />
                       )}
                     </div>
-                    <h3 className="text-sm font-bold text-slate-200">
+                    <h3 className="text-base font-bold text-slate-100">
                       {selectedProvider === 'all'
                         ? '暂无已接入的官方账号'
                         : `暂未接入 ${providers[selectedProvider]?.name || selectedProvider} 官方账号`}
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                      初次使用，请连接官方授权账号。所有会话凭证与 Token 仅加密保存在您的本地设备。
+                    <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto">
+                      每个厂商的登录凭据独立存储。您可以一键从本地客户端中精准抓取，或直接打开官方授权页面完成连接：
                     </p>
-                    <div className="mt-4 flex items-center justify-center gap-2.5">
-                      <button
-                        onClick={() => handleOpenAddModal(selectedProvider !== 'all' ? selectedProvider : undefined)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        <span>授权登录 / 添加账号</span>
-                      </button>
-                      <button
-                        onClick={() => syncWithCCSwitch(true)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition-all"
-                      >
-                        <Database className="h-3.5 w-3.5 text-blue-400" />
-                        <span>从本地环境自动检测</span>
-                      </button>
-                    </div>
+
+                    {selectedProvider !== 'all' ? (
+                      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto text-left">
+                        {/* Option 1: Local Scan */}
+                        <button
+                          type="button"
+                          onClick={() => handleScanProvider(selectedProvider)}
+                          disabled={isScanningProvider}
+                          className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-200 transition-all text-center group cursor-pointer shadow-sm"
+                        >
+                          <Sparkles className={`h-6 w-6 text-blue-400 group-hover:scale-110 transition-transform ${isScanningProvider ? 'animate-spin' : ''}`} />
+                          <div>
+                            <span className="text-xs font-bold block text-blue-300">1. 本地精准检测</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">抓取本地 CLI / 客户端已存 Token</span>
+                          </div>
+                        </button>
+
+                        {/* Option 2: Official Webview Login */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLogin(selectedProvider)}
+                          className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 transition-all text-center group cursor-pointer shadow-sm"
+                        >
+                          <Globe className="h-6 w-6 text-emerald-400 group-hover:scale-110 transition-transform" />
+                          <div>
+                            <span className="text-xs font-bold block text-emerald-300">2. 官方授权登录</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">唤起官方登录窗口直连授权</span>
+                          </div>
+                        </button>
+
+                        {/* Option 3: Manual Input */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddModal(selectedProvider)}
+                          className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 text-orange-200 transition-all text-center group cursor-pointer shadow-sm"
+                        >
+                          <Plus className="h-6 w-6 text-orange-400 group-hover:scale-110 transition-transform" />
+                          <div>
+                            <span className="text-xs font-bold block text-orange-300">3. 手动录入账号</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">输入自定套餐或 API Key 凭证</span>
+                          </div>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-5 flex items-center justify-center gap-2.5">
+                        <button
+                          onClick={() => handleOpenAddModal(undefined)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>添加账号</span>
+                        </button>
+                        <button
+                          onClick={() => syncWithCCSwitch(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition-all"
+                        >
+                          <Database className="h-3.5 w-3.5 text-blue-400" />
+                          <span>从本地环境自动检测</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

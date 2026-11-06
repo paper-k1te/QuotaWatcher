@@ -93,6 +93,40 @@ export const scanLocalAuthProviders = async (): Promise<{ success: boolean; acco
   }
 };
 
+export const scanProviderAuth = async (
+  providerId: string
+): Promise<{ success: boolean; found: boolean; account?: any; message?: string }> => {
+  if (!isTauriEnvironment()) {
+    return { success: true, found: false, message: '非桌面环境' };
+  }
+  try {
+    return await invoke<{ success: boolean; found: boolean; account?: any; message?: string }>(
+      'scan_provider_auth',
+      { providerId }
+    );
+  } catch (err) {
+    console.warn('Failed to scan_provider_auth:', err);
+    return { success: false, found: false, message: String(err) };
+  }
+};
+
+export const openProviderLogin = async (
+  providerId: string
+): Promise<{ success: boolean; url?: string; message?: string }> => {
+  if (!isTauriEnvironment()) {
+    return { success: false, message: '非桌面环境' };
+  }
+  try {
+    return await invoke<{ success: boolean; url?: string; message?: string }>(
+      'open_provider_login',
+      { providerId }
+    );
+  } catch (err) {
+    console.warn('Failed to open_provider_login:', err);
+    return { success: false, message: String(err) };
+  }
+};
+
 export const checkCCSwitchInstalled = async (): Promise<CCSwitchDetectionResult> => {
   if (!isTauriEnvironment()) {
     // In web browser mock mode: simulate successful connection
