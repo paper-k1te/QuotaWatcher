@@ -4,17 +4,18 @@ import {
   Plus, 
   RotateCw, 
   Bell, 
-  ShieldCheck, 
   Search,
   LayoutGrid,
   Layers,
   Sparkles,
-  SlidersHorizontal
+  ArrowRight
 } from 'lucide-react';
 import { initialAccounts, providersMeta } from './mock/mockData';
 import { Account, ProviderId } from './types';
 import { AccountCard } from './components/AccountCard';
 import { ProviderSection } from './components/ProviderSection';
+import { ProviderSidebar } from './components/ProviderSidebar';
+import { ProviderIcon } from './components/ProviderIcons';
 import { TitleBar } from './components/TitleBar';
 import { CCSwitchSynergyBanner } from './components/CCSwitchSynergyBanner';
 import { TrayMiniWidget } from './components/TrayMiniWidget';
@@ -26,6 +27,7 @@ export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'tray'>('dashboard');
   const [layoutMode, setLayoutMode] = useState<'grouped' | 'flat'>('grouped');
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -53,7 +55,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Real-time ticking: decrement cooldownSecondsRemaining every second
+  // Real-time countdown ticking
   useEffect(() => {
     const timer = setInterval(() => {
       setAccounts((prev) =>
@@ -243,7 +245,6 @@ export const App: React.FC = () => {
     return true;
   });
 
-  // Providers list to render
   const providerKeys = Object.keys(providersMeta);
   const activeProviders = selectedProvider === 'all'
     ? providerKeys
@@ -255,8 +256,8 @@ export const App: React.FC = () => {
   ).length;
 
   return (
-    <div className="min-h-screen bg-[#080a10] text-slate-100 flex flex-col font-sans select-none">
-      {/* 1. Custom Frameless TitleBar (Replaces Native Windows Titlebar) */}
+    <div className="h-screen w-screen bg-[#080a10] text-slate-100 flex flex-col font-sans select-none overflow-hidden">
+      {/* 1. Custom Frameless TitleBar (Window Controls & App Title) */}
       <TitleBar
         viewMode={viewMode}
         onToggleViewMode={setViewMode}
@@ -264,7 +265,7 @@ export const App: React.FC = () => {
         warningCount={warningCount}
       />
 
-      {/* Toast Alert Notification */}
+      {/* Floating Toast Notification */}
       {notification && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-blue-500/40 bg-[#121624]/95 px-4 py-2.5 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200">
           <Bell className="h-4 w-4 text-blue-400 animate-bounce" />
@@ -272,201 +273,211 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main App Body */}
-      <main className="mx-auto flex-1 w-full max-w-7xl px-5 py-5 space-y-5">
-        {/* Banner with CC-Switch synergy */}
-        <CCSwitchSynergyBanner
-          activeAccount={activeAccount}
-          ccSwitchPath={ccSwitchPath}
-          autoSwitchEnabled={autoSwitchEnabled}
-          onToggleAutoSwitch={() => {
-            setAutoSwitchEnabled(!autoSwitchEnabled);
-            showToast(
-              `自动切号策略已${!autoSwitchEnabled ? '开启 (检测到耗尽自动切备用号)' : '关闭'}`
-            );
-          }}
-          onTriggerSimulateFailover={handleSimulateFailover}
+      {/* 2. Main Layout with Left Provider Sidebar & Right Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Provider Sidebar (Collapsible with Icons/Names) */}
+        <ProviderSidebar
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          selectedProvider={selectedProvider}
+          onSelectProvider={setSelectedProvider}
+          accounts={accounts}
+          providersMeta={providersMeta}
+          onOpenAddModal={handleOpenAddModal}
         />
 
-        {viewMode === 'tray' ? (
-          /* Tray Mini Widget Mode Preview */
-          <div className="flex flex-col items-center justify-center py-6 space-y-4">
-            <div className="text-center">
-              <h2 className="text-sm font-semibold text-slate-300">
-                系统托盘弹出式视窗预览
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                极简、低干扰、左键点击右下角托盘图标一键呼出，实时观察剩余冷却与用量
-              </p>
-            </div>
-            <TrayMiniWidget
-              accounts={accounts}
-              onRefreshAll={handleRefreshAll}
-              onOpenFullApp={() => setViewMode('dashboard')}
+        {/* Right Content Area */}
+        <main className="flex-1 flex flex-col overflow-y-auto bg-[#080a10] no-scrollbar">
+          <div className="mx-auto w-full max-w-6xl p-5 space-y-5">
+            {/* Banner with CC-Switch synergy */}
+            <CCSwitchSynergyBanner
+              activeAccount={activeAccount}
+              ccSwitchPath={ccSwitchPath}
+              autoSwitchEnabled={autoSwitchEnabled}
+              onToggleAutoSwitch={() => {
+                setAutoSwitchEnabled(!autoSwitchEnabled);
+                showToast(
+                  `自动切号策略已${!autoSwitchEnabled ? '开启 (检测到耗尽自动切备用号)' : '关闭'}`
+                );
+              }}
+              onTriggerSimulateFailover={handleSimulateFailover}
             />
-          </div>
-        ) : (
-          /* Full Dashboard Mode */
-          <div className="space-y-4">
-            {/* Provider Filter Bar & Search */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-[#0d101a]/90 p-3 shadow-sm backdrop-blur-md">
-              {/* Provider Selection Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
-                <button
-                  onClick={() => setSelectedProvider('all')}
-                  className={`rounded-lg px-3 py-1.5 font-medium transition-all shrink-0 ${
-                    selectedProvider === 'all'
-                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  全部供应商 ({accounts.length})
-                </button>
 
-                {providerKeys.map((pKey) => {
-                  const pMeta = providersMeta[pKey];
-                  const count = accounts.filter((a) => a.provider === pKey).length;
-                  const isSelected = selectedProvider === pKey;
-                  return (
-                    <button
-                      key={pKey}
-                      onClick={() => setSelectedProvider(pKey)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all shrink-0 border ${
-                        isSelected
-                          ? `bg-slate-800 ${pMeta.brandColor} ${pMeta.accentBorder} font-semibold shadow-xs`
-                          : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${isSelected ? 'bg-current' : 'bg-slate-600'}`} />
-                      {pMeta.enName}
-                      <span className="text-[10px] text-slate-500 font-mono">({count})</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Search, Layout Switch & Add Account */}
-              <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-                  <input
-                    type="text"
-                    placeholder="搜模型 (如 Claude/R1) 或账号..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-48 sm:w-56 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
-                  />
+            {viewMode === 'tray' ? (
+              /* Tray Mini Widget Mode Preview */
+              <div className="flex flex-col items-center justify-center py-6 space-y-4">
+                <div className="text-center">
+                  <h2 className="text-sm font-semibold text-slate-300">
+                    系统托盘弹出式视窗预览
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    极简、低干扰、左键点击右下角托盘图标一键呼出，实时观察剩余冷却与用量
+                  </p>
                 </div>
-
-                {/* Layout Mode Toggle (Grouped vs Flat) */}
-                <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
-                  <button
-                    onClick={() => setLayoutMode('grouped')}
-                    className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
-                      layoutMode === 'grouped'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title="按供应商分组归类"
-                  >
-                    <Layers className="h-3 w-3" />
-                    按供应商
-                  </button>
-                  <button
-                    onClick={() => setLayoutMode('flat')}
-                    className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
-                      layoutMode === 'flat'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                    title="平铺全部模型账号"
-                  >
-                    <LayoutGrid className="h-3 w-3" />
-                    平铺
-                  </button>
-                </div>
-
-                {/* Refresh All */}
-                <button
-                  onClick={handleRefreshAll}
-                  className="rounded-lg border border-slate-800 bg-[#121624] p-1.5 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
-                  title="刷新全部账号"
-                >
-                  <RotateCw className="h-3.5 w-3.5" />
-                </button>
-
-                {/* Add Account Button */}
-                <button
-                  onClick={() => handleOpenAddModal()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 shadow-md shadow-blue-600/20 transition-all"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>添加账号</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Content Display: Grouped by Provider OR Flat */}
-            {layoutMode === 'grouped' ? (
-              /* Grouped by Provider View */
-              <div className="space-y-4">
-                {activeProviders.map((providerKey) => {
-                  const pMeta = providersMeta[providerKey];
-                  const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
-
-                  // If user is searching and this provider has 0 matching accounts, skip it
-                  if (searchQuery.trim() && pAccounts.length === 0) {
-                    return null;
-                  }
-
-                  return (
-                    <ProviderSection
-                      key={providerKey}
-                      providerMeta={pMeta}
-                      accounts={pAccounts}
-                      onRefresh={handleRefresh}
-                      onSetAsActive={handleSetActive}
-                      onDelete={handleDelete}
-                      onAddAccount={handleOpenAddModal}
-                    />
-                  );
-                })}
+                <TrayMiniWidget
+                  accounts={accounts}
+                  onRefreshAll={handleRefreshAll}
+                  onOpenFullApp={() => setViewMode('dashboard')}
+                />
               </div>
             ) : (
-              /* Flat Grid View */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {filteredAccounts.map((account) => (
-                  <AccountCard
-                    key={account.id}
-                    account={account}
-                    onRefresh={handleRefresh}
-                    onSetAsActive={handleSetActive}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </div>
-            )}
+              /* Full Dashboard Mode */
+              <div className="space-y-4">
+                {/* Header Toolbar within Main View */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-[#0d101a]/90 p-3.5 shadow-sm backdrop-blur-md">
+                  {/* Left: Current Provider Focus Info */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300">
+                      {selectedProvider === 'all' ? (
+                        <Layers className="h-5 w-5 text-blue-400" />
+                      ) : (
+                        <ProviderIcon providerId={selectedProvider} className="h-5 w-5 text-blue-400" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h1 className="text-sm font-bold text-white tracking-tight">
+                          {selectedProvider === 'all'
+                            ? '全平台大模型额度总览'
+                            : `${providersMeta[selectedProvider]?.name} 专区`}
+                        </h1>
+                        <span className="rounded-full bg-slate-800 px-2 py-0.2 text-[10px] font-mono text-slate-400 border border-slate-700/50">
+                          {filteredAccounts.length} 个账号
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-md">
+                        {selectedProvider === 'all'
+                          ? `已聚合 ${providerKeys.length} 家顶级供应商 · 实时监控滚动窗口与余额`
+                          : providersMeta[selectedProvider]?.description}
+                      </p>
+                    </div>
+                  </div>
 
-            {filteredAccounts.length === 0 && (
-              <div className="py-16 text-center text-slate-500 rounded-2xl border border-slate-800/60 bg-[#0d101a]/50">
-                <Sparkles className="h-10 w-10 text-slate-600 mx-auto mb-2 stroke-1" />
-                <p className="text-sm font-medium text-slate-300">未找到符合搜索条件的模型账号</p>
-                <p className="text-xs text-slate-500 mt-1">请尝试更换搜索关键字或切换供应商标签</p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedProvider('all');
-                  }}
-                  className="mt-3 text-xs font-medium text-blue-400 hover:underline"
-                >
-                  重置筛选条件
-                </button>
+                  {/* Right: Search, Layout Switch & Add Account */}
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                    {/* Search Bar */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                      <input
+                        type="text"
+                        placeholder="搜模型 (如 Claude/R1) 或账号..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-44 sm:w-52 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
+                      />
+                    </div>
+
+                    {/* Layout Mode Toggle (Grouped vs Flat) */}
+                    <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
+                      <button
+                        onClick={() => setLayoutMode('grouped')}
+                        className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
+                          layoutMode === 'grouped'
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title="按供应商分组归类"
+                      >
+                        <Layers className="h-3 w-3" />
+                        分组
+                      </button>
+                      <button
+                        onClick={() => setLayoutMode('flat')}
+                        className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
+                          layoutMode === 'flat'
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title="平铺全部模型账号"
+                      >
+                        <LayoutGrid className="h-3 w-3" />
+                        平铺
+                      </button>
+                    </div>
+
+                    {/* Refresh All */}
+                    <button
+                      onClick={handleRefreshAll}
+                      className="rounded-lg border border-slate-800 bg-[#121624] p-1.5 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
+                      title="刷新全部账号"
+                    >
+                      <RotateCw className="h-3.5 w-3.5" />
+                    </button>
+
+                    {/* Add Account Button */}
+                    <button
+                      onClick={() => handleOpenAddModal(selectedProvider !== 'all' ? selectedProvider : undefined)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 shadow-md shadow-blue-600/20 transition-all"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>添加账号</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content Display: Grouped by Provider OR Flat */}
+                {layoutMode === 'grouped' ? (
+                  /* Grouped by Provider View */
+                  <div className="space-y-4">
+                    {activeProviders.map((providerKey) => {
+                      const pMeta = providersMeta[providerKey];
+                      const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
+
+                      // If searching and this provider has 0 matching accounts, skip it
+                      if (searchQuery.trim() && pAccounts.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <ProviderSection
+                          key={providerKey}
+                          providerMeta={pMeta}
+                          accounts={pAccounts}
+                          onRefresh={handleRefresh}
+                          onSetAsActive={handleSetActive}
+                          onDelete={handleDelete}
+                          onAddAccount={handleOpenAddModal}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Flat Grid View */
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {filteredAccounts.map((account) => (
+                      <AccountCard
+                        key={account.id}
+                        account={account}
+                        onRefresh={handleRefresh}
+                        onSetAsActive={handleSetActive}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {filteredAccounts.length === 0 && (
+                  <div className="py-16 text-center text-slate-500 rounded-2xl border border-slate-800/60 bg-[#0d101a]/50">
+                    <Sparkles className="h-10 w-10 text-slate-600 mx-auto mb-2 stroke-1" />
+                    <p className="text-sm font-medium text-slate-300">未找到符合条件的模型账号</p>
+                    <p className="text-xs text-slate-500 mt-1">请尝试在左侧切换供应商或清空搜索栏</p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSelectedProvider('all');
+                      }}
+                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-400 hover:underline"
+                    >
+                      <span>重置回全部供应商</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </main>
+        </main>
+      </div>
 
       {/* Add Account Modal */}
       <AddAccountModal
