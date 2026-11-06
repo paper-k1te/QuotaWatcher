@@ -71,6 +71,11 @@ fn toggle_always_on_top(window: tauri::Window, always_on_top: bool) {
     let _ = window.set_always_on_top(always_on_top);
 }
 
+#[tauri::command]
+fn start_dragging(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
+
 fn debug_log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -101,7 +106,8 @@ pub fn run(listener: std::net::TcpListener) {
             window_toggle_maximize,
             window_close,
             set_window_mode,
-            toggle_always_on_top
+            toggle_always_on_top,
+            start_dragging
         ])
         .setup(move |app| {
             debug_log("setup() entered");
@@ -202,7 +208,7 @@ pub fn run(listener: std::net::TcpListener) {
                 )
                 .title("QuotaWatcher - 全平台多账号额度管家")
                 .inner_size(1120.0, 760.0)
-                .min_inner_size(860.0, 580.0)
+                .min_inner_size(320.0, 380.0)
                 .decorations(false)
                 .center()
                 .build()?

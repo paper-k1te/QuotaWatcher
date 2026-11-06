@@ -1,10 +1,6 @@
 import React from 'react';
 import { 
   Clock, 
-  Coins, 
-  AlertTriangle, 
-  CheckCircle2, 
-  XCircle, 
   RotateCw, 
   Check, 
   Zap,
@@ -75,14 +71,14 @@ export const AccountRow: React.FC<Props> = ({
         {/* Account Name & Subtitles */}
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-slate-100 text-sm tracking-tight truncate">
+            <h3 className="font-semibold text-slate-100 text-[15px] tracking-tight truncate">
               {account.name}
             </h3>
 
             {/* CC-Switch Active Badge */}
             {account.isActiveInCCSwitch && (
-              <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.2 text-[10px] font-semibold text-blue-400 animate-pulse">
-                <Zap className="w-2.5 h-2.5 fill-blue-400" />
+              <span className="inline-flex items-center gap-1 rounded bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.2 text-[11px] font-semibold text-blue-400 animate-pulse">
+                <Zap className="w-3 h-3 fill-blue-400" />
                 使用中
               </span>
             )}
@@ -91,7 +87,7 @@ export const AccountRow: React.FC<Props> = ({
             {account.tags.map((tag) => (
               <span
                 key={tag}
-                className="hidden md:inline-block rounded bg-slate-800/70 px-1.5 py-0.2 text-[10px] text-slate-400 border border-slate-700/40"
+                className="hidden md:inline-block rounded bg-slate-800/70 px-1.5 py-0.2 text-[11px] text-slate-400 border border-slate-700/40"
               >
                 {tag}
               </span>
@@ -99,18 +95,18 @@ export const AccountRow: React.FC<Props> = ({
           </div>
 
           {/* Model / Endpoint Subtitle */}
-          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400 truncate">
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-400 truncate">
             {account.models && account.models.length > 0 ? (
-              <span className="font-mono text-slate-400 truncate">
+              <span className="font-mono text-slate-300 truncate">
                 {account.models.join(' · ')}
               </span>
             ) : (
-              <span className="text-slate-500 font-mono">
+              <span className="text-slate-400 font-mono">
                 {providerMeta?.name || account.provider}
               </span>
             )}
             <span className="text-slate-600">·</span>
-            <span className="text-slate-500">P{account.priority}</span>
+            <span className="text-slate-400 font-medium">P{account.priority}</span>
           </div>
         </div>
       </div>
@@ -118,18 +114,18 @@ export const AccountRow: React.FC<Props> = ({
       {/* Middle: Quota Metrics & Progress Bar */}
       <div className="flex items-center gap-4 shrink-0 sm:px-2">
         {isRolling && latestSnapshot.rollingWindow && (
-          <div className="flex flex-col items-start sm:items-end min-w-[140px]">
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="font-mono font-bold text-slate-200">
+          <div className="flex flex-col items-start sm:items-end min-w-[150px]">
+            <div className="flex items-center gap-1.5 text-sm">
+              <span className="font-mono font-bold text-slate-100">
                 {latestSnapshot.rollingWindow.used} / {latestSnapshot.rollingWindow.total} 次
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">
+              <span className="text-xs text-slate-400 font-mono">
                 ({Math.round((latestSnapshot.rollingWindow.used / latestSnapshot.rollingWindow.total) * 100)}%)
               </span>
             </div>
 
             {/* Mini Progress Bar */}
-            <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-slate-800">
+            <div className="mt-1.5 h-1.5 w-34 overflow-hidden rounded-full bg-slate-800">
               <div
                 className={`h-full transition-all duration-300 ${
                   isExhausted
@@ -147,8 +143,8 @@ export const AccountRow: React.FC<Props> = ({
               />
             </div>
 
-            <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-400">
-              <Clock className="w-2.5 h-2.5 text-blue-400" />
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+              <Clock className="w-3 h-3 text-blue-400" />
               <span>{formatCountdown(latestSnapshot.rollingWindow.cooldownSecondsRemaining)}后重置</span>
             </div>
           </div>
@@ -158,16 +154,16 @@ export const AccountRow: React.FC<Props> = ({
           <div className="flex flex-col items-start sm:items-end min-w-[130px]">
             <div className="flex items-baseline gap-1">
               <span className="text-xs text-slate-400">余额</span>
-              <span className="text-sm font-bold font-mono text-emerald-400">
+              <span className="text-base font-bold font-mono text-emerald-400">
                 {latestSnapshot.currencyBalance.currency === 'USD' ? '$' : '¥'}
                 {latestSnapshot.currencyBalance.balance.toFixed(2)}
               </span>
-              <span className="text-[10px] text-slate-500 font-mono">
+              <span className="text-xs text-slate-500 font-mono">
                 {latestSnapshot.currencyBalance.currency}
               </span>
             </div>
             {latestSnapshot.currencyBalance.grantedAmount !== undefined && (
-              <span className="text-[10px] text-slate-400 mt-0.5">
+              <span className="text-[11px] text-slate-400 mt-0.5">
                 含赠金: {latestSnapshot.currencyBalance.currency === 'USD' ? '$' : '¥'}
                 {latestSnapshot.currencyBalance.grantedAmount.toFixed(2)}
               </span>
@@ -177,10 +173,10 @@ export const AccountRow: React.FC<Props> = ({
 
         {isTier && latestSnapshot.periodicTier && (
           <div className="flex flex-col items-start sm:items-end min-w-[130px]">
-            <div className="text-xs font-mono font-bold text-slate-200">
+            <div className="text-sm font-mono font-bold text-slate-100">
               {latestSnapshot.periodicTier.used} / {latestSnapshot.periodicTier.limit} {latestSnapshot.periodicTier.unit}
             </div>
-            <div className="mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-slate-800">
+            <div className="mt-1.5 h-1.5 w-30 overflow-hidden rounded-full bg-slate-800">
               <div
                 className="h-full bg-sky-500"
                 style={{
@@ -191,7 +187,7 @@ export const AccountRow: React.FC<Props> = ({
                 }}
               />
             </div>
-            <span className="text-[10px] text-slate-400 mt-0.5">次日自动刷新</span>
+            <span className="text-[11px] text-slate-400 mt-0.5">次日自动刷新</span>
           </div>
         )}
       </div>
@@ -200,22 +196,22 @@ export const AccountRow: React.FC<Props> = ({
       <div className="flex items-center gap-2 shrink-0 justify-end border-t sm:border-t-0 border-slate-800/60 pt-2 sm:pt-0">
         {/* Status Pill */}
         {account.isActiveInCCSwitch ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-1 text-xs font-medium text-blue-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/15 border border-blue-500/30 px-2.5 py-1 text-xs font-semibold text-blue-400">
             <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping" />
             使用中
           </span>
         ) : isExhausted ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 border border-rose-500/30 px-2.5 py-1 text-xs font-medium text-rose-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 border border-rose-500/30 px-2.5 py-1 text-xs font-semibold text-rose-400">
             <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
             已耗尽
           </span>
         ) : isWarning ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-medium text-amber-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-semibold text-amber-400">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
             即将耗尽
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-medium text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-xs font-semibold text-emerald-400">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             充盈待命
           </span>
@@ -225,15 +221,15 @@ export const AccountRow: React.FC<Props> = ({
         {!account.isActiveInCCSwitch ? (
           <button
             onClick={() => onSetAsActive(account.id)}
-            className="inline-flex items-center gap-1 rounded-lg bg-slate-800/80 border border-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-all shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-all shadow-sm"
             title="设为 CC-Switch 当前生效账号"
           >
             <Play className="h-3 w-3 fill-current" />
             <span>切至此号</span>
           </button>
         ) : (
-          <div className="inline-flex items-center gap-1 rounded-lg bg-blue-600/20 border border-blue-500/30 px-2.5 py-1 text-xs font-medium text-blue-300">
-            <Check className="h-3 w-3 text-blue-400" />
+          <div className="inline-flex items-center gap-1 rounded-lg bg-blue-600/20 border border-blue-500/30 px-3 py-1.5 text-xs font-medium text-blue-300">
+            <Check className="h-3.5 w-3.5 text-blue-400" />
             <span>主力</span>
           </div>
         )}

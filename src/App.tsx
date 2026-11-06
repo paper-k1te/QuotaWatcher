@@ -423,22 +423,22 @@ export const App: React.FC = () => {
                         )}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h1 className="text-sm font-bold text-white tracking-tight">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h1 className="text-base font-bold text-white tracking-tight">
                             {selectedProvider === 'all'
                               ? '全平台正版大模型额度总览'
                               : providers[selectedProvider]?.name || selectedProvider}
                           </h1>
-                          <span className="rounded-full bg-slate-800/80 px-2 py-0.2 text-[10px] font-mono text-slate-300 border border-slate-700/50">
+                          <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-xs font-mono text-slate-300 border border-slate-700/50">
                             {filteredAccounts.length} 个账号
                           </span>
                           {selectedProvider !== 'all' && providers[selectedProvider]?.badge && (
-                            <span className="hidden sm:inline-block rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.2 text-[10px] font-medium">
+                            <span className="hidden sm:inline-block rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 text-xs font-medium">
                               {providers[selectedProvider]?.badge}
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-md">
+                        <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md">
                           {selectedProvider === 'all'
                             ? `已在侧边栏启用 ${visibleProviderIds.length} 家核心供应商 · 实时监控正版滚动窗口与余额`
                             : providers[selectedProvider]?.description}

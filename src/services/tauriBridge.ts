@@ -101,3 +101,25 @@ export const setAlwaysOnTop = async (alwaysOnTop: boolean): Promise<void> => {
     console.warn('Failed to toggle always on top:', err);
   }
 };
+
+export const startDragging = async (e?: React.MouseEvent): Promise<void> => {
+  if (e) {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, select, a, textarea')) {
+      return;
+    }
+  }
+  if (!isTauriEnvironment()) {
+    return;
+  }
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().startDragging();
+  } catch {
+    try {
+      await invoke('start_dragging');
+    } catch (err) {
+      console.warn('start_dragging failed:', err);
+    }
+  }
+};

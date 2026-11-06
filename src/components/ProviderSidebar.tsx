@@ -51,10 +51,10 @@ export const ProviderSidebar: React.FC<Props> = ({
       }`}>
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
               供应商导航
             </span>
-            <span className="rounded-full bg-slate-800 px-1.5 py-0.2 text-[10px] text-slate-400 font-mono">
+            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400 font-mono">
               {displayProviderKeys.length} 家
             </span>
           </div>
@@ -102,8 +102,8 @@ export const ProviderSidebar: React.FC<Props> = ({
           {/* Label when Expanded */}
           {!isCollapsed && (
             <div className="flex flex-1 items-center justify-between min-w-0">
-              <span className="text-xs truncate tracking-tight">全部供应商</span>
-              <span className="rounded-full bg-slate-800/80 px-1.5 py-0.2 text-[10px] font-mono text-slate-400">
+              <span className="text-[13.5px] truncate tracking-tight font-medium">全部供应商</span>
+              <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-xs font-mono text-slate-300">
                 {accounts.length}
               </span>
             </div>
@@ -176,28 +176,28 @@ export const ProviderSidebar: React.FC<Props> = ({
                 <div className="flex flex-1 items-center justify-between min-w-0">
                   <div className="min-w-0 text-left">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs truncate font-medium text-slate-200 group-hover:text-white">
+                      <span className="text-[13.5px] truncate font-semibold text-slate-200 group-hover:text-white">
                         {meta.name}
                       </span>
                       {hasActiveInCCSwitch && (
-                        <span className="inline-flex items-center text-[9px] text-blue-400 bg-blue-500/15 border border-blue-500/30 px-1 py-0.2 rounded font-semibold animate-pulse">
+                        <span className="inline-flex items-center text-[10px] text-blue-400 bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.2 rounded font-semibold animate-pulse">
                           主力
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                    <div className="text-[11px] text-slate-400 font-mono truncate">
                       {meta.supportedModels[0] || meta.badge}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0 ml-1">
-                    <span className="rounded-full bg-slate-800/80 px-1.5 py-0.2 text-[10px] font-mono text-slate-400">
+                  <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                    <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-xs font-mono text-slate-300">
                       {providerAccounts.length}
                     </span>
                     {hasExhausted ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" title="有账号额度耗尽" />
+                      <span className="h-2 w-2 rounded-full bg-rose-500" title="有账号额度耗尽" />
                     ) : hasWarning ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="有账号接近耗尽" />
+                      <span className="h-2 w-2 rounded-full bg-amber-400" title="有账号接近耗尽" />
                     ) : null}
                   </div>
                 </div>
@@ -212,7 +212,7 @@ export const ProviderSidebar: React.FC<Props> = ({
         <button
           onClick={onOpenSettings}
           className={`flex w-full items-center rounded-xl transition-all duration-150 ${
-            isCollapsed ? 'h-9 justify-center px-0' : 'h-9 px-3 gap-2.5'
+            isCollapsed ? 'h-9 justify-center px-0' : 'h-10 px-3 gap-2.5'
           } ${
             isSettingsOpen
               ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 font-semibold'
@@ -221,7 +221,7 @@ export const ProviderSidebar: React.FC<Props> = ({
           title="系统与厂商设置"
         >
           <Settings className="h-4 w-4 shrink-0" />
-          {!isCollapsed && <span className="text-xs font-medium">设置</span>}
+          {!isCollapsed && <span className="text-[13.5px] font-semibold">设置</span>}
         </button>
       </div>
     </aside>

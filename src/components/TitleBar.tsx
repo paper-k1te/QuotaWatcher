@@ -9,7 +9,7 @@ import {
   AppWindow, 
   Monitor 
 } from 'lucide-react';
-import { minimizeWindow, toggleMaximizeWindow, closeWindow, isTauriEnvironment } from '../services/tauriBridge';
+import { minimizeWindow, toggleMaximizeWindow, closeWindow, startDragging } from '../services/tauriBridge';
 
 interface Props {
   viewMode: 'dashboard' | 'tray';
@@ -31,16 +31,18 @@ export const TitleBar: React.FC<Props> = ({
     setIsMaximized(!isMaximized);
   };
 
-  const handleToggleMaximize = () => {
-    toggleMaximizeWindow();
-    setIsMaximized(!isMaximized);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 0) {
+      startDragging(e);
+    }
   };
 
   return (
     <div
       data-tauri-drag-region
+      onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
-      className="sticky top-0 z-50 flex h-10 w-full select-none items-center justify-between border-b border-slate-800/80 bg-[#0c0f17]/95 px-3 backdrop-blur-md"
+      className="sticky top-0 z-50 flex h-11 w-full select-none items-center justify-between border-b border-slate-800/80 bg-[#0c0f17]/95 px-3.5 backdrop-blur-md cursor-default"
     >
       {/* Left: Brand Icon, Title & Status */}
       <div className="flex items-center gap-2.5 pointer-events-none">
@@ -48,24 +50,24 @@ export const TitleBar: React.FC<Props> = ({
           <Zap className="h-3.5 w-3.5" />
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-bold text-xs tracking-tight text-white">
+          <span className="font-bold text-sm tracking-tight text-white">
             QuotaWatcher
           </span>
-          <span className="rounded-full bg-blue-500/10 px-1.5 py-0.2 text-[9px] font-semibold text-blue-400 border border-blue-500/20">
-            v0.1.0
+          <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[10px] font-semibold text-blue-400 border border-blue-500/20 font-mono">
+            v0.1.5
           </span>
         </div>
 
-        <div className="hidden sm:flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-2.5 text-[11px] text-slate-400">
+        <div className="hidden sm:flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-2.5 text-xs text-slate-400">
           <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
-            <ShieldCheck className="h-3 w-3" />
+            <ShieldCheck className="h-3.5 w-3.5" />
             CC-Switch 已连通
           </span>
           <span className="text-slate-600">·</span>
           <span>
             {activeCount} 活跃账号
             {warningCount > 0 && (
-              <span className="text-amber-400 ml-1">({warningCount} 告警)</span>
+              <span className="text-amber-400 ml-1 font-medium">({warningCount} 告警)</span>
             )}
           </span>
         </div>
@@ -74,7 +76,7 @@ export const TitleBar: React.FC<Props> = ({
       {/* Center Drag Region (Occupies available space) */}
       <div
         data-tauri-drag-region
-        className="flex-1 h-full flex items-center justify-center text-[11px] text-slate-500/60 font-medium cursor-default"
+        className="flex-1 h-full flex items-center justify-center text-xs text-slate-500/70 font-medium cursor-move"
       >
         <span className="hidden md:inline pointer-events-none">
           多平台 AI 额度哨兵 · 自动巡检 · 智能切号
@@ -82,32 +84,32 @@ export const TitleBar: React.FC<Props> = ({
       </div>
 
       {/* Right: View Mode Toggle & Window Controls */}
-      <div className="flex items-center gap-1.5 no-drag">
+      <div className="flex items-center gap-2 no-drag">
         {/* View Mode Toggle Pill */}
-        <div className="flex items-center rounded-md border border-slate-800 bg-[#121522] p-0.5 text-[11px]">
+        <div className="flex items-center rounded-lg border border-slate-800 bg-[#121522] p-0.5 text-xs">
           <button
             onClick={() => onToggleViewMode('dashboard')}
-            className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition-all ${
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
               viewMode === 'dashboard'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
             title="完整监控看板"
           >
-            <AppWindow className="h-3 w-3" />
-            看板
+            <AppWindow className="h-3.5 w-3.5" />
+            <span>看板</span>
           </button>
           <button
             onClick={() => onToggleViewMode('tray')}
-            className={`flex items-center gap-1 rounded px-2 py-0.5 font-medium transition-all ${
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
               viewMode === 'tray'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
-            title="小巧托盘视窗"
+            title="小巧独立托盘悬浮窗"
           >
-            <Monitor className="h-3 w-3" />
-            托盘
+            <Monitor className="h-3.5 w-3.5" />
+            <span>托盘</span>
           </button>
         </div>
 
