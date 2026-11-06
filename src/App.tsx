@@ -15,6 +15,7 @@ import { AccountCard } from './components/AccountCard';
 import { CCSwitchSynergyBanner } from './components/CCSwitchSynergyBanner';
 import { TrayMiniWidget } from './components/TrayMiniWidget';
 import { AddAccountModal } from './components/AddAccountModal';
+import { checkCCSwitchInstalled, setupTrayListeners, isTauriEnvironment } from './services/tauriBridge';
 
 export const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
@@ -24,6 +25,27 @@ export const App: React.FC = () => {
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [ccSwitchPath, setCcSwitchPath] = useState<string>('~/.cc-switch');
+
+  // Detect CC-Switch and listen to Tauri Tray events
+  useEffect(() => {
+    checkCCSwitchInstalled().then((res) => {
+      if (res.detected) {
+        setCcSwitchPath(res.path || '~/.cc-switch');
+      }
+    });
+
+    let unlisten: (() => void) | null = null;
+    setupTrayListeners(() => {
+      handleRefreshAll();
+    }).then((fn) => {
+      if (fn) unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   // Real-time ticking: decrement cooldownSecondsRemaining every second
   useEffect(() => {
@@ -312,6 +334,7 @@ export const App: React.FC = () => {
         {/* Banner with CC-Switch synergy */}
         <CCSwitchSynergyBanner
           activeAccount={activeAccount}
+          ccSwitchPath={ccSwitchPath}
           autoSwitchEnabled={autoSwitchEnabled}
           onToggleAutoSwitch={() => {
             setAutoSwitchEnabled(!autoSwitchEnabled);

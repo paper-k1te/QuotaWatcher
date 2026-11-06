@@ -4,6 +4,7 @@ import { Account } from '../types';
 
 interface Props {
   activeAccount?: Account;
+  ccSwitchPath?: string;
   autoSwitchEnabled: boolean;
   onToggleAutoSwitch: () => void;
   onTriggerSimulateFailover: () => void;
@@ -11,6 +12,7 @@ interface Props {
 
 export const CCSwitchSynergyBanner: React.FC<Props> = ({
   activeAccount,
+  ccSwitchPath = '~/.cc-switch',
   autoSwitchEnabled,
   onToggleAutoSwitch,
   onTriggerSimulateFailover,
@@ -30,7 +32,7 @@ export const CCSwitchSynergyBanner: React.FC<Props> = ({
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
                 <ShieldCheck className="h-3 w-3" />
-                已连通 ~/.cc-switch
+                已连通 {ccSwitchPath}
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-0.5">
