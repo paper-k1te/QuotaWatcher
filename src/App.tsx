@@ -6,6 +6,7 @@ import {
   Bell, 
   Search,
   LayoutGrid,
+  List,
   Layers,
   Sparkles,
   ArrowRight
@@ -13,7 +14,7 @@ import {
 import { initialAccounts, providersMeta } from './mock/mockData';
 import { Account, ProviderId } from './types';
 import { AccountCard } from './components/AccountCard';
-import { ProviderSection } from './components/ProviderSection';
+import { AccountRow } from './components/AccountRow';
 import { ProviderSidebar } from './components/ProviderSidebar';
 import { ProviderIcon } from './components/ProviderIcons';
 import { TitleBar } from './components/TitleBar';
@@ -25,7 +26,7 @@ import { checkCCSwitchInstalled, setupTrayListeners } from './services/tauriBrid
 export const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
   const [viewMode, setViewMode] = useState<'dashboard' | 'tray'>('dashboard');
-  const [layoutMode, setLayoutMode] = useState<'grouped' | 'flat'>('grouped');
+  const [layoutMode, setLayoutMode] = useState<'list' | 'grid'>('list'); // Default to clean CCSwitch-style list
   const [selectedProvider, setSelectedProvider] = useState<string>('all');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -62,21 +63,21 @@ export const App: React.FC = () => {
         prev.map((acc) => {
           if (
             acc.latestSnapshot?.kind === 'rolling_window' &&
-            acc.latestSnapshot.rollingWindow &&
-            acc.latestSnapshot.rollingWindow.cooldownSecondsRemaining > 0
+            acc.latestSnapshot.rollingWindow
           ) {
-            const nextSec = acc.latestSnapshot.rollingWindow.cooldownSecondsRemaining - 1;
-            return {
-              ...acc,
-              latestSnapshot: {
-                ...acc.latestSnapshot,
-                isExhausted: nextSec > 0 ? acc.latestSnapshot.isExhausted : false,
-                rollingWindow: {
-                  ...acc.latestSnapshot.rollingWindow,
-                  cooldownSecondsRemaining: nextSec,
+            const currentSec = acc.latestSnapshot.rollingWindow.cooldownSecondsRemaining;
+            if (currentSec > 0) {
+              return {
+                ...acc,
+                latestSnapshot: {
+                  ...acc.latestSnapshot,
+                  rollingWindow: {
+                    ...acc.latestSnapshot.rollingWindow,
+                    cooldownSecondsRemaining: currentSec - 1,
+                  },
                 },
-              },
-            };
+              };
+            }
           }
           return acc;
         })
@@ -86,147 +87,165 @@ export const App: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Show toast notification
+  // Show floating toast alert
   const showToast = (msg: string) => {
     setNotification(msg);
     setTimeout(() => {
-      setNotification(null);
-    }, 5000);
+      setNotification((curr) => (curr === msg ? null : curr));
+    }, 3200);
   };
 
-  // Switch active account in CC-Switch
+  // Switch active account (CC-Switch synergy)
   const handleSetActive = (id: string) => {
     setAccounts((prev) =>
-      prev.map((a) => ({
-        ...a,
-        isActiveInCCSwitch: a.id === id,
+      prev.map((acc) => ({
+        ...acc,
+        isActiveInCCSwitch: acc.id === id,
       }))
     );
     const target = accounts.find((a) => a.id === id);
-    showToast(`🔄 已将 CC-Switch 正在使用的账号切换为: [${target?.name}]`);
+    if (target) {
+      showToast(`⚡ 已协同 CC-Switch：当前生效账号已切换为「${target.name}」`);
+    }
   };
 
-  // Simulate Exhaustion & Auto-Failover
-  const handleSimulateFailover = () => {
-    const currentActive = accounts.find((a) => a.isActiveInCCSwitch);
-    if (!currentActive) {
-      showToast('⚠️ 当前没有已激活的 CC-Switch 账号');
-      return;
-    }
-
-    const candidates = accounts.filter(
-      (a) => a.id !== currentActive.id && a.enabled && !a.latestSnapshot?.isExhausted
-    );
-
-    if (candidates.length === 0) {
-      showToast('❌ 告警: 所有备用账号均已耗尽，请补充新账号！');
-      return;
-    }
-
-    candidates.sort((a, b) => a.priority - b.priority);
-    const nextAccount = candidates[0];
-
+  // Refresh single account quota
+  const handleRefresh = (id: string) => {
     setAccounts((prev) =>
-      prev.map((a) => {
-        if (a.id === currentActive.id) {
+      prev.map((acc) => {
+        if (acc.id === id && acc.latestSnapshot) {
+          if (acc.latestSnapshot.kind === 'rolling_window' && acc.latestSnapshot.rollingWindow) {
+            const rw = acc.latestSnapshot.rollingWindow;
+            const newUsed = Math.max(0, rw.used - Math.floor(Math.random() * 3));
+            return {
+              ...acc,
+              latestSnapshot: {
+                ...acc.latestSnapshot,
+                timestamp: new Date().toISOString(),
+                isExhausted: newUsed >= rw.total,
+                isWarning: newUsed >= rw.total * 0.8,
+                rollingWindow: {
+                  ...rw,
+                  used: newUsed,
+                  cooldownSecondsRemaining: Math.floor(Math.random() * 7200) + 600,
+                },
+              },
+            };
+          } else if (acc.latestSnapshot.kind === 'currency_balance' && acc.latestSnapshot.currencyBalance) {
+            const cb = acc.latestSnapshot.currencyBalance;
+            return {
+              ...acc,
+              latestSnapshot: {
+                ...acc.latestSnapshot,
+                timestamp: new Date().toISOString(),
+                currencyBalance: {
+                  ...cb,
+                  balance: Number((cb.balance - (Math.random() * 0.5)).toFixed(2)),
+                },
+              },
+            };
+          }
+        }
+        return acc;
+      })
+    );
+    const acc = accounts.find((a) => a.id === id);
+    showToast(`🔄 账号「${acc?.name}」额度已同步至最新状态`);
+  };
+
+  // Refresh all accounts
+  const handleRefreshAll = () => {
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.latestSnapshot?.kind === 'rolling_window' && acc.latestSnapshot.rollingWindow) {
+          const rw = acc.latestSnapshot.rollingWindow;
+          return {
+            ...acc,
+            latestSnapshot: {
+              ...acc.latestSnapshot,
+              timestamp: new Date().toISOString(),
+              rollingWindow: {
+                ...rw,
+                used: Math.max(0, rw.used - 1),
+              },
+            },
+          };
+        }
+        return acc;
+      })
+    );
+    showToast('🔄 已全量刷新各大供应商模型配额数据');
+  };
+
+  // Delete an account
+  const handleDelete = (id: string) => {
+    const acc = accounts.find((a) => a.id === id);
+    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    showToast(`🗑️ 账号「${acc?.name}」已从本地配额监控中移除`);
+  };
+
+  // Simulate failover
+  const handleSimulateFailover = () => {
+    const active = accounts.find((a) => a.isActiveInCCSwitch);
+    if (!active) return;
+
+    setAccounts((prev) => {
+      const exhaustedList = prev.map((a) => {
+        if (a.id === active.id && a.latestSnapshot?.rollingWindow) {
           return {
             ...a,
             isActiveInCCSwitch: false,
-            latestSnapshot: a.latestSnapshot
-              ? {
-                  ...a.latestSnapshot,
-                  isExhausted: true,
-                  isWarning: true,
-                }
-              : undefined,
-          };
-        }
-        if (a.id === nextAccount.id) {
-          return {
-            ...a,
-            isActiveInCCSwitch: true,
+            latestSnapshot: {
+              ...a.latestSnapshot,
+              isExhausted: true,
+              isWarning: false,
+              rollingWindow: {
+                ...a.latestSnapshot.rollingWindow,
+                used: a.latestSnapshot.rollingWindow.total,
+                cooldownSecondsRemaining: 3600 * 2,
+              },
+            },
           };
         }
         return a;
-      })
-    );
+      });
 
-    showToast(
-      `⚡ [自动续命触发] 主力号 [${currentActive.name}] 额度已耗尽！已自动通知 cc-switch 切换至备用号 [${nextAccount.name}]`
-    );
+      const backup = exhaustedList.find(
+        (a) => a.provider === active.provider && !a.latestSnapshot?.isExhausted && a.id !== active.id
+      ) || exhaustedList.find((a) => !a.latestSnapshot?.isExhausted && a.id !== active.id);
+
+      if (backup) {
+        showToast(
+          `🚨 熔断触发！「${active.name}」已耗尽，已自动切号至健康号源「${backup.name}」`
+        );
+        return exhaustedList.map((a) => ({
+          ...a,
+          isActiveInCCSwitch: a.id === backup.id,
+        }));
+      }
+
+      showToast(`⚠️「${active.name}」额度已耗尽，且同供应商无其他可用号源！`);
+      return exhaustedList;
+    });
   };
 
-  // Refresh single account
-  const handleRefresh = (id: string) => {
-    showToast(`正在刷新账号 ${id} 的最新额度...`);
-    setTimeout(() => {
-      showToast(`账号最新额度同步完成`);
-    }, 600);
-  };
-
-  // Refresh all
-  const handleRefreshAll = () => {
-    showToast(`正在并行刷新全部 ${accounts.length} 个账号用量与余额...`);
-    setTimeout(() => {
-      showToast(`全部账号状态已是最新`);
-    }, 800);
-  };
-
-  // Delete account
-  const handleDelete = (id: string) => {
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
-    showToast('已移除该账号监控');
-  };
-
-  // Open add modal for specific provider
-  const handleOpenAddModal = (providerId?: string) => {
-    setModalTargetProvider(providerId);
+  // Open Add Modal
+  const handleOpenAddModal = (targetProvider?: string) => {
+    setModalTargetProvider(targetProvider);
     setIsAddModalOpen(true);
   };
 
-  // Add account
-  const handleAddAccount = (newAcc: Partial<Account>) => {
-    const account: Account = {
-      id: `acc-${Date.now()}`,
-      name: newAcc.name || '新账号',
-      platform: newAcc.platform || 'deepseek',
-      provider: (newAcc.provider || 'deepseek') as ProviderId,
-      models: newAcc.models || ['通用模型'],
-      tags: newAcc.tags || ['新增'],
-      enabled: true,
-      priority: newAcc.priority || 2,
-      autoFailoverEnabled: true,
-      pollingIntervalMinutes: 10,
-      latestSnapshot: {
-        timestamp: new Date().toISOString(),
-        isHealthy: true,
-        isExhausted: false,
-        isWarning: false,
-        kind: newAcc.platform?.includes('web') ? 'rolling_window' : 'currency_balance',
-        ...(newAcc.platform?.includes('web')
-          ? {
-              rollingWindow: {
-                used: 5,
-                total: 45,
-                windowDurationHours: 5,
-                resetsAt: new Date(Date.now() + 120 * 60 * 1000).toISOString(),
-                cooldownSecondsRemaining: 120 * 60,
-              },
-            }
-          : {
-              currencyBalance: {
-                currency: 'CNY',
-                balance: 20.0,
-                grantedAmount: 5.0,
-              },
-            }),
-      },
+  // Add new account
+  const handleAddAccount = (newAcc: Omit<Account, 'id'>) => {
+    const created: Account = {
+      ...newAcc,
+      id: `acc-custom-${Date.now()}`,
     };
-    setAccounts((prev) => [account, ...prev]);
-    showToast(`成功添加账号 [${account.name}] 并启动定时守卫`);
+    setAccounts((prev) => [created, ...prev]);
+    showToast(`🎉 成功添加新账号「${created.name}」`);
   };
 
-  // Filter accounts by search query and provider
+  // Filter accounts
   const filteredAccounts = accounts.filter((acc) => {
     const query = searchQuery.toLowerCase().trim();
     const matchSearch =
@@ -288,8 +307,8 @@ export const App: React.FC = () => {
 
         {/* Right Content Area */}
         <main className="flex-1 flex flex-col overflow-y-auto bg-[#080a10] no-scrollbar">
-          <div className="mx-auto w-full max-w-6xl p-5 space-y-5">
-            {/* Banner with CC-Switch synergy */}
+          <div className="mx-auto w-full max-w-6xl p-4 sm:p-5 space-y-3.5">
+            {/* Slim Compact CC-Switch Synergy Ribbon */}
             <CCSwitchSynergyBanner
               activeAccount={activeAccount}
               ccSwitchPath={ccSwitchPath}
@@ -322,12 +341,12 @@ export const App: React.FC = () => {
               </div>
             ) : (
               /* Full Dashboard Mode */
-              <div className="space-y-4">
-                {/* Header Toolbar within Main View */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-[#0d101a]/90 p-3.5 shadow-sm backdrop-blur-md">
+              <div className="space-y-3.5">
+                {/* Header Toolbar (CCSwitch style: Provider Context, Search, View Modes & Add) */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-[#0c0f18]/90 px-4 py-2.5 shadow-sm backdrop-blur-md">
                   {/* Left: Current Provider Focus Info */}
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300">
                       {selectedProvider === 'all' ? (
                         <Layers className="h-5 w-5 text-blue-400" />
                       ) : (
@@ -339,11 +358,16 @@ export const App: React.FC = () => {
                         <h1 className="text-sm font-bold text-white tracking-tight">
                           {selectedProvider === 'all'
                             ? '全平台大模型额度总览'
-                            : `${providersMeta[selectedProvider]?.name} 专区`}
+                            : providersMeta[selectedProvider]?.name}
                         </h1>
-                        <span className="rounded-full bg-slate-800 px-2 py-0.2 text-[10px] font-mono text-slate-400 border border-slate-700/50">
+                        <span className="rounded-full bg-slate-800/80 px-2 py-0.2 text-[10px] font-mono text-slate-300 border border-slate-700/50">
                           {filteredAccounts.length} 个账号
                         </span>
+                        {selectedProvider !== 'all' && (
+                          <span className="hidden sm:inline-block rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.2 text-[10px] font-medium">
+                            {providersMeta[selectedProvider]?.badge}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-md">
                         {selectedProvider === 'all'
@@ -353,45 +377,45 @@ export const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right: Search, Layout Switch & Add Account */}
+                  {/* Right: Search, View Mode Toggle & Add Button */}
                   <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
                     {/* Search Bar */}
                     <div className="relative">
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
                       <input
                         type="text"
-                        placeholder="搜模型 (如 Claude/R1) 或账号..."
+                        placeholder="搜索模型或账号..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-44 sm:w-52 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
+                        className="w-36 sm:w-48 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
                       />
                     </div>
 
-                    {/* Layout Mode Toggle (Grouped vs Flat) */}
+                    {/* View Switcher: List (CCSwitch-style) vs Grid Cards */}
                     <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
                       <button
-                        onClick={() => setLayoutMode('grouped')}
+                        onClick={() => setLayoutMode('list')}
                         className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
-                          layoutMode === 'grouped'
-                            ? 'bg-blue-600 text-white'
+                          layoutMode === 'list'
+                            ? 'bg-blue-600 text-white shadow-sm'
                             : 'text-slate-400 hover:text-slate-200'
                         }`}
-                        title="按供应商分组归类"
+                        title="列表视图 (平铺精简 · CCSwitch 风格)"
                       >
-                        <Layers className="h-3 w-3" />
-                        分组
+                        <List className="h-3.5 w-3.5" />
+                        <span>列表</span>
                       </button>
                       <button
-                        onClick={() => setLayoutMode('flat')}
+                        onClick={() => setLayoutMode('grid')}
                         className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
-                          layoutMode === 'flat'
-                            ? 'bg-blue-600 text-white'
+                          layoutMode === 'grid'
+                            ? 'bg-blue-600 text-white shadow-sm'
                             : 'text-slate-400 hover:text-slate-200'
                         }`}
-                        title="平铺全部模型账号"
+                        title="卡片网格视图"
                       >
-                        <LayoutGrid className="h-3 w-3" />
-                        平铺
+                        <LayoutGrid className="h-3.5 w-3.5" />
+                        <span>卡片</span>
                       </button>
                     </div>
 
@@ -404,10 +428,10 @@ export const App: React.FC = () => {
                       <RotateCw className="h-3.5 w-3.5" />
                     </button>
 
-                    {/* Add Account Button */}
+                    {/* Add Account Button (Vibrant Orange like CCSwitch) */}
                     <button
                       onClick={() => handleOpenAddModal(selectedProvider !== 'all' ? selectedProvider : undefined)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 shadow-md shadow-blue-600/20 transition-all"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>添加账号</span>
@@ -415,49 +439,109 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Content Display: Grouped by Provider OR Flat */}
-                {layoutMode === 'grouped' ? (
-                  /* Grouped by Provider View */
-                  <div className="space-y-4">
-                    {activeProviders.map((providerKey) => {
-                      const pMeta = providersMeta[providerKey];
-                      const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
+                {/* Content Area: DIRECT FLAT DISPLAY (Zero Nested Card Container!) */}
+                {layoutMode === 'list' ? (
+                  /* 1. Flat List View (CCSwitch Inspired) */
+                  <div className="space-y-2">
+                    {selectedProvider === 'all' ? (
+                      /* Grouped by Provider with Clean Minimal Text Separators */
+                      activeProviders.map((providerKey) => {
+                        const pMeta = providersMeta[providerKey];
+                        const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
+                        if (pAccounts.length === 0) return null;
 
-                      // If searching and this provider has 0 matching accounts, skip it
-                      if (searchQuery.trim() && pAccounts.length === 0) {
-                        return null;
-                      }
+                        return (
+                          <div key={providerKey} className="space-y-1.5">
+                            {/* Clean text divider, NO heavy box */}
+                            <div className="flex items-center justify-between pt-2.5 pb-1 text-xs text-slate-400">
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon providerId={providerKey} className="h-3.5 w-3.5 text-blue-400" />
+                                <span className="font-semibold text-slate-200">{pMeta.name}</span>
+                                <span className="text-[11px] font-mono text-slate-500">({pAccounts.length})</span>
+                              </div>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {pMeta.supportedModels.slice(0, 2).join(' · ')}
+                              </span>
+                            </div>
 
-                      return (
-                        <ProviderSection
-                          key={providerKey}
-                          providerMeta={pMeta}
-                          accounts={pAccounts}
+                            {/* Direct account rows */}
+                            {pAccounts.map((account) => (
+                              <AccountRow
+                                key={account.id}
+                                account={account}
+                                providerMeta={pMeta}
+                                onRefresh={handleRefresh}
+                                onSetAsActive={handleSetActive}
+                                onDelete={handleDelete}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      /* Specific Provider: DIRECT FLAT ROWS, ZERO REDUNDANCY */
+                      filteredAccounts.map((account) => (
+                        <AccountRow
+                          key={account.id}
+                          account={account}
+                          providerMeta={providersMeta[selectedProvider]}
                           onRefresh={handleRefresh}
                           onSetAsActive={handleSetActive}
                           onDelete={handleDelete}
-                          onAddAccount={handleOpenAddModal}
                         />
-                      );
-                    })}
+                      ))
+                    )}
                   </div>
                 ) : (
-                  /* Flat Grid View */
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {filteredAccounts.map((account) => (
-                      <AccountCard
-                        key={account.id}
-                        account={account}
-                        onRefresh={handleRefresh}
-                        onSetAsActive={handleSetActive}
-                        onDelete={handleDelete}
-                      />
-                    ))}
+                  /* 2. Flat Grid Card View */
+                  <div>
+                    {selectedProvider === 'all' ? (
+                      activeProviders.map((providerKey) => {
+                        const pMeta = providersMeta[providerKey];
+                        const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
+                        if (pAccounts.length === 0) return null;
+
+                        return (
+                          <div key={providerKey} className="space-y-2 mb-4">
+                            <div className="flex items-center gap-2 pt-2 pb-1 text-xs text-slate-400">
+                              <ProviderIcon providerId={providerKey} className="h-3.5 w-3.5 text-blue-400" />
+                              <span className="font-semibold text-slate-200">{pMeta.name}</span>
+                              <span className="text-[11px] font-mono text-slate-500">({pAccounts.length})</span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {pAccounts.map((account) => (
+                                <AccountCard
+                                  key={account.id}
+                                  account={account}
+                                  onRefresh={handleRefresh}
+                                  onSetAsActive={handleSetActive}
+                                  onDelete={handleDelete}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filteredAccounts.map((account) => (
+                          <AccountCard
+                            key={account.id}
+                            account={account}
+                            onRefresh={handleRefresh}
+                            onSetAsActive={handleSetActive}
+                            onDelete={handleDelete}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
+                {/* Empty State */}
                 {filteredAccounts.length === 0 && (
-                  <div className="py-16 text-center text-slate-500 rounded-2xl border border-slate-800/60 bg-[#0d101a]/50">
+                  <div className="py-16 text-center text-slate-500 rounded-xl border border-slate-800/60 bg-[#0c0f18]/50">
                     <Sparkles className="h-10 w-10 text-slate-600 mx-auto mb-2 stroke-1" />
                     <p className="text-sm font-medium text-slate-300">未找到符合条件的模型账号</p>
                     <p className="text-xs text-slate-500 mt-1">请尝试在左侧切换供应商或清空搜索栏</p>
