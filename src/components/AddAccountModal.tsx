@@ -1,70 +1,132 @@
-import React, { useState } from 'react';
-import { X, Key, Shield, PlusCircle } from 'lucide-react';
-import { Account, PlatformId, ProviderId } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, Key, Shield, PlusCircle, Check } from 'lucide-react';
+import { Account, ProviderMeta } from '../types';
+import { ProviderIcon } from './ProviderIcons';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (account: Partial<Account>) => void;
   initialProvider?: string;
+  providersMeta: Record<string, ProviderMeta>;
 }
 
-export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd, initialProvider }) => {
-  const [name, setName] = useState('');
-  const [platform, setPlatform] = useState<PlatformId>(
-    initialProvider === 'anthropic' ? 'claude-web' :
-    initialProvider === 'openai' ? 'chatgpt-web' :
-    initialProvider === 'siliconflow' ? 'siliconflow' :
-    initialProvider === 'gemini' ? 'gemini' :
-    initialProvider === 'openrouter' ? 'openrouter' : 'deepseek'
+export const AddAccountModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  onAdd,
+  initialProvider,
+  providersMeta,
+}) => {
+  const providerList = Object.values(providersMeta);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(
+    initialProvider && initialProvider !== 'all' ? initialProvider : 'claude'
   );
+  const [name, setName] = useState('');
   const [credential, setCredential] = useState('');
-  const [tags, setTags] = useState('个人号, 开发测试');
-  const [priority, setPriority] = useState(2);
+  const [tags, setTags] = useState('个人号, 开发主力');
+  const [priority, setPriority] = useState(1);
+
+  // Sync initial provider when modal opens
+  useEffect(() => {
+    if (initialProvider && initialProvider !== 'all') {
+      setSelectedProviderId(initialProvider);
+    }
+  }, [initialProvider, isOpen]);
 
   if (!isOpen) return null;
+
+  const currentProviderMeta = providersMeta[selectedProviderId] || providerList[0];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    const platformToProvider: Record<PlatformId, { provider: ProviderId; models: string[] }> = {
-      'claude-web': { provider: 'anthropic', models: ['Claude 3.7 Sonnet', 'Claude 3.5 Haiku'] },
-      'chatgpt-web': { provider: 'openai', models: ['GPT-4o', 'o3-mini'] },
-      'deepseek': { provider: 'deepseek', models: ['DeepSeek-R1', 'DeepSeek-V3'] },
-      'siliconflow': { provider: 'siliconflow', models: ['DeepSeek-R1 (云托管)', 'Qwen-2.5-72B'] },
-      'gemini': { provider: 'google', models: ['Gemini 2.5 Flash', 'Gemini 2.5 Pro'] },
-      'openrouter': { provider: 'openrouter', models: ['Claude 3.7', 'Llama 3.3 70B'] },
-      'custom-api': { provider: 'custom', models: ['Custom LLM'] },
-    };
+    // Create appropriate initial snapshot based on provider quota type
+    const isRolling = ['claude', 'chatgpt', 'grok'].includes(selectedProviderId);
+    const isTier = selectedProviderId === 'antigravity';
 
-    const info = platformToProvider[platform] || { provider: 'custom', models: ['通用大模型'] };
+    let snapshot: any;
+    if (isRolling) {
+      snapshot = {
+        timestamp: new Date().toISOString(),
+        isHealthy: true,
+        isExhausted: false,
+        isWarning: false,
+        kind: 'rolling_window',
+        rollingWindow: {
+          used: 2,
+          total: selectedProviderId === 'chatgpt' ? 80 : selectedProviderId === 'grok' ? 30 : 45,
+          windowDurationHours: selectedProviderId === 'chatgpt' ? 3 : selectedProviderId === 'grok' ? 2 : 5,
+          resetsAt: new Date(Date.now() + 3600 * 3 * 1000).toISOString(),
+          cooldownSecondsRemaining: 3600 * 3,
+        },
+      };
+    } else if (isTier) {
+      snapshot = {
+        timestamp: new Date().toISOString(),
+        isHealthy: true,
+        isExhausted: false,
+        isWarning: false,
+        kind: 'periodic_tier',
+        periodicTier: {
+          period: 'day',
+          used: 15,
+          limit: 1500,
+          unit: '次/天',
+          resetsAt: new Date(Date.now() + 86400 * 1000).toISOString(),
+        },
+      };
+    } else {
+      snapshot = {
+        timestamp: new Date().toISOString(),
+        isHealthy: true,
+        isExhausted: false,
+        isWarning: false,
+        kind: 'currency_balance',
+        currencyBalance: {
+          currency: selectedProviderId === 'bossclaw' || selectedProviderId === 'openrouter' ? 'USD' : 'CNY',
+          balance: 50.0,
+          grantedAmount: 10.0,
+        },
+      };
+    }
 
     onAdd({
-      name,
-      platform,
-      provider: info.provider,
-      models: info.models,
+      name: name.trim(),
+      platform: 'custom-api',
+      provider: selectedProviderId,
+      models: currentProviderMeta.supportedModels,
       tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
       priority,
       enabled: true,
       autoFailoverEnabled: true,
-      pollingIntervalMinutes: 10,
+      latestSnapshot: snapshot,
     });
 
-    // Reset form
+    // Reset
     setName('');
     setCredential('');
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-[#10141f] p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-800 bg-[#0d101a] p-5 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
           <div className="flex items-center gap-2">
-            <PlusCircle className="h-5 w-5 text-blue-400" />
-            <h3 className="font-semibold text-slate-100 text-base">添加新账号监控</h3>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              <PlusCircle className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white tracking-tight">
+                添加模型账号
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                向指定 AI 厂商添加正版账号或中转 Key 进行监控
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -74,38 +136,39 @@ export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd, initi
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Platform selection */}
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
+          {/* Target Provider Selection */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              目标平台 / 账号类型
+              所属 AI 厂商
             </label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value as PlatformId)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="claude-web">Claude.ai 网页版 (5h 滚动窗口)</option>
-              <option value="chatgpt-web">ChatGPT 网页版 (3h 限制)</option>
-              <option value="deepseek">DeepSeek 官方 API (按量余额)</option>
-              <option value="siliconflow">硅基流动 SiliconFlow (按量余额)</option>
-              <option value="gemini">Google AI Studio (免费层 RPD)</option>
-              <option value="openrouter">OpenRouter (API Credit)</option>
-            </select>
+            <div className="relative">
+              <select
+                value={selectedProviderId}
+                onChange={(e) => setSelectedProviderId(e.target.value)}
+                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
+              >
+                {providerList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.badge})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Account Name */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              账号标识备注
+              账号名称 / 备注 <span className="text-orange-400">*</span>
             </label>
             <input
               type="text"
-              placeholder="例如: 个人主力号 (Claude Pro) 或 备用API"
+              required
+              placeholder="例如：个人主号 (Pro) / 团队备用号"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-              required
+              className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
             />
           </div>
 
@@ -113,78 +176,71 @@ export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd, initi
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-medium text-slate-300">
-                {platform.includes('web') ? 'SessionKey / Cookie' : 'API Key'}
+                鉴权凭证 (API Key / SessionKey / Token)
               </label>
-              <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
                 <Shield className="w-2.5 h-2.5" />
-                仅本地 Keyring 加密存储
+                本地加密存储
               </span>
             </div>
             <div className="relative">
               <input
                 type="password"
-                placeholder={
-                  platform.includes('web')
-                    ? 'sk-ant-sid01-...'
-                    : 'sk-...'
-                }
+                placeholder="sk-..."
                 value={credential}
                 onChange={(e) => setCredential(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none font-mono"
               />
-              <Key className="absolute right-3 top-2.5 h-4 w-4 text-slate-500" />
+              <Key className="absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
             </div>
-            <p className="mt-1 text-[11px] text-slate-400">
-              {platform === 'claude-web' && '从网页端 Cookie 中提取 sessionKey 即可，无需密码'}
-              {platform === 'deepseek' && 'DeepSeek 开放平台控制台生成的 API Key'}
-            </p>
           </div>
 
-          {/* Priority and Tags */}
+          {/* Priority & Tags */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                故障转移优先级 (P1最高)
+                切号优先级 (P1最高)
               </label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
               >
-                <option value={1}>P1 (主力号，优先使用)</option>
-                <option value={2}>P2 (第一备用)</option>
-                <option value={3}>P3 (第二备用)</option>
-                <option value={4}>P4 (紧急垫底)</option>
+                <option value={1}>P1 (主力，优先激活)</option>
+                <option value={2}>P2 (第一梯队备用)</option>
+                <option value={3}>P3 (第二梯队备用)</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                自定义标签
+                分类标签
               </label>
               <input
                 type="text"
+                placeholder="主力, Claude Code"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Buttons */}
-          <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-800 pt-4">
+          {/* Submit */}
+          <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-slate-800/80">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
             >
               取消
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-500 shadow-md transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
             >
-              立即保存并校验
+              <Check className="h-3.5 w-3.5" />
+              <span>保存并加入监控</span>
             </button>
           </div>
         </form>

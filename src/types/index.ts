@@ -5,19 +5,24 @@ export type PlatformId =
   | 'siliconflow'
   | 'gemini'
   | 'openrouter'
-  | 'custom-api';
+  | 'custom-api'
+  | string;
 
 export type ProviderId = 
-  | 'anthropic' 
-  | 'deepseek' 
-  | 'openai' 
-  | 'siliconflow' 
-  | 'gemini' 
-  | 'openrouter' 
-  | 'custom';
+  | 'chatgpt'
+  | 'claude'
+  | 'antigravity'
+  | 'grok'
+  | 'deepseek'
+  | 'kimi'
+  | 'trae'
+  | 'tokendance'
+  | 'siliconflow'
+  | 'openrouter'
+  | string;
 
 export interface ProviderMeta {
-  id: ProviderId;
+  id: string;
   name: string;
   enName: string;
   badge: string;
@@ -28,6 +33,11 @@ export interface ProviderMeta {
   supportedModels: string[];
   description: string;
   quotaTypeLabel: string;
+  category: 'official' | 'ecosystem' | 'relay';
+  isDefaultVisible: boolean; // 是否默认显示在侧边栏
+  isCustom?: boolean; // 是否是用户添加的第三方中转厂商
+  endpoint?: string;
+  protocol?: 'openai' | 'newapi' | 'oneapi' | 'custom';
 }
 
 export type QuotaKind = 'rolling_window' | 'currency_balance' | 'periodic_tier';
@@ -71,20 +81,18 @@ export interface Account {
   id: string;
   name: string;
   platform: PlatformId;
-  provider: ProviderId; // 供应商归属
+  provider: string; // 供应商归属 (chatgpt / claude / antigravity / grok / deepseek / kimi / 自定义中转等)
   models: string[]; // 常用/对应支持的模型名称
   tags: string[];
   enabled: boolean;
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用
   priority: number; // 优先级 (1-10)
   autoFailoverEnabled: boolean;
-  pollingIntervalMinutes: number;
+  endpoint?: string; // 自定义中转接口
+  credentials?: {
+    apiKey?: string;
+    sessionToken?: string;
+    cookie?: string;
+  };
   latestSnapshot?: QuotaSnapshot;
-}
-
-export interface CCSwitchStatus {
-  isInstalled: boolean;
-  configPath?: string;
-  activeProfileId?: string;
-  autoSwitchOnExhaustion: boolean;
 }
