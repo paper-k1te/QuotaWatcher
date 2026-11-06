@@ -184,7 +184,7 @@ if os.path.exists(dsh_creds):
         if token:
             results.append({
                 'id': 'local-deepseek-official',
-                'name': 'DeepSeek Official',
+                'name': 'DeepSeek Official (网页/满血版)',
                 'email': 'platform@deepseek.com',
                 'provider': 'deepseek',
                 'platform': 'deepseek-harness',
@@ -192,9 +192,35 @@ if os.path.exists(dsh_creds):
                 'quotaMechanism': 'dual_window',
                 'isOfficial': True,
                 'isActiveInCCSwitch': True,
-                'source': 'DeepSeek Harness Local Auth'
+                'source': 'DeepSeek Harness 本地凭据 (~/.dsh)'
             })
     except Exception as e:
+        pass
+
+# Fallback: check CC-Switch database for DeepSeek (dsh) activity
+if not any(r['provider'] == 'deepseek' for r in results):
+    try:
+        import sqlite3
+        cc_db = os.path.join(home, '.cc-switch', 'cc-switch.db')
+        if os.path.exists(cc_db):
+            conn = sqlite3.connect(cc_db)
+            c = conn.cursor()
+            c.execute("SELECT count(*) FROM proxy_request_logs WHERE app_type='dsh'")
+            if c.fetchone()[0] > 0:
+                results.append({
+                    'id': 'local-deepseek-official',
+                    'name': 'DeepSeek Official (满血版)',
+                    'email': 'platform@deepseek.com',
+                    'provider': 'deepseek',
+                    'platform': 'deepseek-harness',
+                    'planName': 'V3 / R1 官方满血版',
+                    'quotaMechanism': 'dual_window',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': True,
+                    'source': 'DeepSeek Harness / CC-Switch 协同'
+                })
+            conn.close()
+    except Exception:
         pass
 
 # 3. Check Claude Code Official (Exclude third-party relays)
@@ -446,6 +472,35 @@ def scan(pid):
                     }}
             except Exception:
                 pass
+        # Check CC-Switch proxy logs for DeepSeek activity
+        try:
+            import sqlite3
+            cc_db = os.path.join(home, '.cc-switch', 'cc-switch.db')
+            if os.path.exists(cc_db):
+                conn = sqlite3.connect(cc_db)
+                c = conn.cursor()
+                c.execute("SELECT count(*) FROM proxy_request_logs WHERE app_type='dsh'")
+                if c.fetchone()[0] > 0:
+                    return {{
+                        'success': True,
+                        'found': True,
+                        'account': {{
+                            'id': 'local-deepseek-official',
+                            'name': 'DeepSeek Official (网页/满血版)',
+                            'email': 'platform@deepseek.com',
+                            'provider': 'deepseek',
+                            'platform': 'deepseek-harness',
+                            'planName': 'V3 / R1 官方满血版',
+                            'quotaMechanism': 'dual_window',
+                            'isOfficial': True,
+                            'isActiveInCCSwitch': True,
+                            'source': 'DeepSeek Harness (~/.dsh) / CC-Switch 协同',
+                        }}
+                    }}
+                conn.close()
+        except Exception:
+            pass
+
         ds_env = os.environ.get('DEEPSEEK_API_KEY')
         if ds_env:
             return {{
@@ -648,7 +703,7 @@ print(json.dumps(scan('{}'), ensure_ascii=False))
 }
 
 #[tauri::command]
-fn open_provider_login(app: tauri::AppHandle, provider_id: String) -> serde_json::Value {
+fn open_provider_login(provider_id: String) -> serde_json::Value {
     let (url, title) = match provider_id.as_str() {
         "chatgpt" | "openai" => ("https://chatgpt.com/auth/login", "OpenAI ChatGPT 官方登录"),
         "claude" | "anthropic" => ("https://claude.ai/login", "Anthropic Claude 官方登录"),
@@ -660,59 +715,26 @@ fn open_provider_login(app: tauri::AppHandle, provider_id: String) -> serde_json
         _ => ("https://chatgpt.com/", "AI 官方登录"),
     };
 
-    let label = format!("oauth_{}", provider_id.replace('-', "_"));
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
-        return serde_json::json!({
-            "success": true,
-            "url": url,
-            "message": format!("已聚焦现有的 {} 窗口", title)
-        });
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut cmd = std::process::Command::new("cmd");
+        // start "" "url" ensures Windows start command treats the first quoted param as window title, and second as URL
+        cmd.args(["/c", "start", "", url]);
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: prevent CMD flash window
+        let _ = cmd.spawn();
     }
 
-    let parsed_url = match url.parse() {
-        Ok(u) => u,
-        Err(_) => {
-            return serde_json::json!({
-                "success": false,
-                "error": "URL parse error"
-            });
-        }
-    };
-
-    let builder_res = tauri::WebviewWindowBuilder::new(
-        &app,
-        &label,
-        tauri::WebviewUrl::External(parsed_url),
-    )
-    .title(title)
-    .inner_size(960.0, 720.0)
-    .resizable(true)
-    .build();
-
-    match builder_res {
-        Ok(_) => serde_json::json!({
-            "success": true,
-            "url": url,
-            "message": format!("已唤起 {} 官方授权窗口", title)
-        }),
-        Err(_) => {
-            #[cfg(windows)]
-            {
-                let _ = std::process::Command::new("cmd")
-                    .args(["/c", "start", url])
-                    .spawn();
-            }
-            serde_json::json!({
-                "success": true,
-                "url": url,
-                "fallback": true,
-                "message": format!("已在系统浏览器中打开 {} 官方授权页", title)
-            })
-        }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
+
+    serde_json::json!({
+        "success": true,
+        "url": url,
+        "message": format!("已在外部默认浏览器中打开 {} 页面", title)
+    })
 }
 
 #[tauri::command]

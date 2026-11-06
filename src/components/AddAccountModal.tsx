@@ -108,9 +108,9 @@ export const AddAccountModal: React.FC<Props> = ({
   const handleOpenLogin = async (pid: string) => {
     try {
       const res = await openProviderLogin(pid);
-      setScanFeedback(`🌐 ${res.message || '已唤起官方登录界面'}。完成登录后点击【检测本地登录】即可同步！`);
+      setScanFeedback(`🌐 ${res.message || '已在外部浏览器中打开官网登录页面'}。完成登录后点击【检测本地登录】即可同步！`);
     } catch (e) {
-      setScanFeedback('❌ 唤起官方登录界面失败');
+      setScanFeedback('❌ 打开外部浏览器失败');
     }
   };
 
@@ -294,10 +294,10 @@ export const AddAccountModal: React.FC<Props> = ({
                   type="button"
                   onClick={() => handleOpenLogin(selectedProviderId)}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 transition-colors"
-                  title="调用官方登录界面，直接抓取账户信息"
+                  title="在外部默认浏览器中打开官方登录页"
                 >
                   <Globe className="h-3.5 w-3.5" />
-                  官方登录
+                  打开官网登录
                 </button>
               </div>
             </div>

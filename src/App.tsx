@@ -139,56 +139,102 @@ export const App: React.FC = () => {
     // Run first sync with local DB
     syncWithCCSwitch(false);
 
-    // If no accounts stored locally, auto-scan local official sessions
-    if (loadStoredAccounts().length === 0) {
-      scanLocalAuthProviders().then((res) => {
-        if (res.success && res.accounts && res.accounts.length > 0) {
-          const detected: Account[] = res.accounts.map((a: any) => {
-            const isDeepSeek = a.provider === 'deepseek';
-            return {
-              id: a.id || `acc-${Date.now()}-${Math.random()}`,
-              name: a.name || (isDeepSeek ? 'DeepSeek Official' : 'PaperKite'),
-              email: a.email || (isDeepSeek ? 'platform@deepseek.com' : '1044709853@qq.com'),
-              platform: a.platform || (isDeepSeek ? 'deepseek-harness' : 'chatgpt-web'),
-              provider: a.provider || (isDeepSeek ? 'deepseek' : 'chatgpt'),
-              planName: a.planName || (isDeepSeek ? 'V3 / R1 官方满血版' : 'Plus'),
-              planExpiresAt: a.planExpiresAt,
-              quotaMechanism: a.quotaMechanism || 'dual_window',
-              tags: [a.planName || (isDeepSeek ? '满血 V3/R1' : 'Plus'), '官方授权'],
-              enabled: true,
-              isActiveInCCSwitch: a.isActiveInCCSwitch || false,
-              priority: 1,
-              autoFailoverEnabled: true,
-              lastLoginAt: '2026-11-06 23:25',
-              latestSnapshot: {
-                timestamp: new Date().toISOString(),
-                isHealthy: true,
-                isExhausted: false,
-                isWarning: false,
-                kind: 'rolling_window',
-                rollingWindow: {
-                  used: isDeepSeek ? 6 : 12,
-                  total: isDeepSeek ? 50 : 80,
-                  windowDurationHours: 5,
-                  resetsAt: new Date(Date.now() + 3600 * (isDeepSeek ? 3.5 : 2.5) * 1000).toISOString(),
-                  cooldownSecondsRemaining: Math.floor(3600 * (isDeepSeek ? 3.5 : 2.5)),
+    // Intelligently scan and link all authentic local accounts (DeepSeek, Trae, Codex CLI, etc.)
+    scanLocalAuthProviders().then((res) => {
+      if (res.success && res.accounts && res.accounts.length > 0) {
+        setAccounts((prev) => {
+          const updated = [...prev];
+          let addedCount = 0;
+          for (const a of res.accounts) {
+            const exists = updated.some(
+              (acc) => acc.id === a.id || (acc.provider === a.provider && acc.email === a.email)
+            );
+            if (!exists) {
+              const isDeepSeek = a.provider === 'deepseek';
+              const isTrae = a.provider === 'trae';
+              const newAcc: Account = {
+                id: a.id || `acc-${a.provider}-${Date.now()}`,
+                name: a.name || (isDeepSeek ? 'DeepSeek Official' : isTrae ? 'Trae Official' : 'PaperKite'),
+                email: a.email || (isDeepSeek ? 'platform@deepseek.com' : 'user@local.auth'),
+                platform: a.platform || `${a.provider}-client`,
+                provider: a.provider,
+                planName: a.planName || '标准订阅',
+                planExpiresAt: a.planExpiresAt,
+                quotaMechanism: a.quotaMechanism || 'dual_window',
+                tags: [a.planName || '官方认证', '本地同步'],
+                enabled: true,
+                isActiveInCCSwitch: a.isActiveInCCSwitch || false,
+                priority: 1,
+                autoFailoverEnabled: true,
+                lastLoginAt: '本地凭证已连通',
+                credentials: {
+                  apiKey: a.source || 'Local Auth Token',
+                  sessionToken: a.source || 'Local Auth Token',
                 },
-                sevenDayQuota: {
-                  usedPercent: isDeepSeek ? 18 : 25,
-                  totalPercent: 100,
-                  cooldownSecondsRemaining: 3600 * 24 * 4 + 3600 * 18,
-                  resetsAt: '周一 00:00',
-                  label: isDeepSeek ? '18% 充沛' : '25% 充沛',
-                },
-              },
-            };
-          });
-          setAccounts(detected);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(detected));
-          showToast(`⚡ 已成功接入本地官方 ${detected.map(d => d.name).join('、')} 账号`);
-        }
-      });
-    }
+                latestSnapshot:
+                  a.quotaMechanism === 'balance_only'
+                    ? {
+                        timestamp: new Date().toISOString(),
+                        isHealthy: true,
+                        isExhausted: false,
+                        isWarning: false,
+                        kind: 'currency_balance',
+                        currencyBalance: {
+                          currency: a.currency || 'CNY',
+                          balance: a.balance || 20.0,
+                        },
+                        quotaMechanism: 'balance_only',
+                      }
+                    : a.quotaMechanism === 'daily_quota'
+                    ? {
+                        timestamp: new Date().toISOString(),
+                        isHealthy: true,
+                        isExhausted: false,
+                        isWarning: false,
+                        kind: 'daily_quota',
+                        dailyQuota: {
+                          used: a.dailyUsed || 38,
+                          limit: a.dailyLimit || 500,
+                          resetsAt: '次日 00:00',
+                          cooldownSecondsRemaining: 3600 * 22,
+                        },
+                        quotaMechanism: 'daily_quota',
+                      }
+                    : {
+                        timestamp: new Date().toISOString(),
+                        isHealthy: true,
+                        isExhausted: false,
+                        isWarning: false,
+                        kind: 'rolling_window',
+                        rollingWindow: {
+                          used: isDeepSeek ? 8 : 12,
+                          total: isDeepSeek ? 50 : 80,
+                          windowDurationHours: 5,
+                          resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
+                          cooldownSecondsRemaining: Math.floor(3600 * 2.5),
+                        },
+                        sevenDayQuota: {
+                          usedPercent: isDeepSeek ? 18 : 25,
+                          totalPercent: 100,
+                          cooldownSecondsRemaining: 3600 * 24 * 4,
+                          resetsAt: '周一 00:00',
+                          label: isDeepSeek ? '18% 充沛' : '25% 充沛',
+                        },
+                        quotaMechanism: 'dual_window',
+                      },
+              };
+              updated.push(newAcc);
+              addedCount++;
+            }
+          }
+          if (addedCount > 0) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            showToast(`⚡ 已成功接入本地 ${res.accounts.map((a: any) => a.name).join('、')} 账号`);
+          }
+          return updated;
+        });
+      }
+    });
 
     let unlisten: (() => void) | null = null;
     setupTrayListeners(() => {
@@ -402,16 +448,13 @@ export const App: React.FC = () => {
     }
   };
 
-  // Launch official OAuth / WebView login window
+  // Launch official login in external browser
   const handleOpenLogin = async (providerId: string) => {
-    const pMeta = providers[providerId];
-    const pName = pMeta?.name || providerId;
-    showToast(`🌐 正在唤起 ${pName} 官方登录界面...`);
     try {
       const res = await openProviderLogin(providerId);
-      showToast(`🌐 ${res.message || '官方授权窗口已打开'}。登录完成后点击【检测本地凭证】即可自动同步！`);
+      showToast(`🌐 ${res.message || '已在外部默认浏览器中打开登录页面'}。完成登录后点击【检测本地凭证】即可自动同步！`);
     } catch (err) {
-      showToast(`❌ 唤起官方登录失败: ${err}`);
+      showToast(`❌ 打开浏览器失败: ${err}`);
     }
   };
 
@@ -982,8 +1025,8 @@ export const App: React.FC = () => {
                         >
                           <Globe className="h-6 w-6 text-emerald-400 group-hover:scale-110 transition-transform" />
                           <div>
-                            <span className="text-xs font-bold block text-emerald-300">2. 官方授权登录</span>
-                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">唤起官方登录窗口直连授权</span>
+                            <span className="text-xs font-bold block text-emerald-300">2. 浏览器打开官网</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">在外部默认浏览器中快速登录</span>
                           </div>
                         </button>
 
