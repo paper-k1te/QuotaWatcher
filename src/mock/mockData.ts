@@ -176,18 +176,19 @@ export const providersMeta: Record<string, ProviderMeta> = {
 };
 
 export const initialAccounts: Account[] = [
-  // Claude 官方正版
+  // Claude 官方
   {
     id: 'acc-claude-1',
     name: 'Claude 个人主号 (Pro)',
+    email: 'alex.anthropic@gmail.com',
     platform: 'claude-web',
     provider: 'claude',
-    models: ['Claude 3.7 Sonnet', 'Claude 3.5 Sonnet'],
     tags: ['主力', 'Claude Code', 'Pro'],
     enabled: true,
     isActiveInCCSwitch: true,
     priority: 1,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 23:25',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -201,19 +202,25 @@ export const initialAccounts: Account[] = [
         resetsAt: new Date(Date.now() + 2460 * 1000).toISOString(),
         cooldownSecondsRemaining: 2460,
       },
+      sevenDayQuota: {
+        usedPercent: 42,
+        totalPercent: 100,
+        label: '42% 充足',
+      },
     },
   },
   {
     id: 'acc-claude-2',
     name: 'Claude 备用号 2 (Team)',
+    email: 'team.workspace@company.com',
     platform: 'claude-web',
     provider: 'claude',
-    models: ['Claude 3.7 Sonnet', 'Claude 3.5 Haiku'],
     tags: ['备用', '待命', 'Team'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 2,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 22:40',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -227,21 +234,27 @@ export const initialAccounts: Account[] = [
         resetsAt: new Date(Date.now() + 10740 * 1000).toISOString(),
         cooldownSecondsRemaining: 10740,
       },
+      sevenDayQuota: {
+        usedPercent: 12,
+        totalPercent: 100,
+        label: '12% 充盈',
+      },
     },
   },
 
-  // OpenAI ChatGPT 官方正版
+  // OpenAI ChatGPT 官方
   {
     id: 'acc-openai-1',
     name: 'OpenAI Official (官方)',
+    email: 'dev.lead@openai-user.org',
     platform: 'chatgpt-web',
     provider: 'chatgpt',
-    models: ['GPT-4o', 'o1 (深度推理)', 'o3-mini'],
     tags: ['官方主力', 'Codex CLI', 'Plus'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 1,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 23:10',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -251,23 +264,29 @@ export const initialAccounts: Account[] = [
       rollingWindow: {
         used: 18,
         total: 80,
-        windowDurationHours: 3,
+        windowDurationHours: 5,
         resetsAt: new Date(Date.now() + 5400 * 1000).toISOString(),
         cooldownSecondsRemaining: 5400,
+      },
+      sevenDayQuota: {
+        usedPercent: 23,
+        totalPercent: 100,
+        label: '23% 充沛',
       },
     },
   },
   {
     id: 'acc-openai-2',
     name: 'OpenAI 备用号 (测试)',
+    email: 'eval.agent@research.edu',
     platform: 'chatgpt-web',
     provider: 'chatgpt',
-    models: ['GPT-4o', 'GPT-4o mini'],
     tags: ['备用', '团队配额'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 3,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 21:50',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: false,
@@ -277,25 +296,31 @@ export const initialAccounts: Account[] = [
       rollingWindow: {
         used: 80,
         total: 80,
-        windowDurationHours: 3,
+        windowDurationHours: 5,
         resetsAt: new Date(Date.now() + 3200 * 1000).toISOString(),
         cooldownSecondsRemaining: 3200,
+      },
+      sevenDayQuota: {
+        usedPercent: 95,
+        totalPercent: 100,
+        label: '95% 警戒',
       },
     },
   },
 
-  // Google Antigravity 官方正版
+  // Google Antigravity 官方
   {
     id: 'acc-antigravity-1',
     name: 'Google Antigravity 开发者号',
+    email: 'senior.engineer@google.com',
     platform: 'gemini',
     provider: 'antigravity',
-    models: ['Gemini 2.5 Pro', 'Gemini 2.5 Flash'],
-    tags: ['官方正版', 'Antigravity IDE', '免费周期'],
+    tags: ['官方正版', 'Antigravity IDE'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 2,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 20:15',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -309,21 +334,27 @@ export const initialAccounts: Account[] = [
         unit: '次/天',
         resetsAt: new Date(Date.now() + 86400 * 1000).toISOString(),
       },
+      sevenDayQuota: {
+        usedPercent: 18,
+        totalPercent: 100,
+        label: '18% 充沛',
+      },
     },
   },
 
-  // xAI Grok 官方正版
+  // xAI Grok 官方
   {
     id: 'acc-grok-1',
     name: 'xAI Grok 个人订阅号',
+    email: 'musk.tech@x.com',
     platform: 'custom-api',
     provider: 'grok',
-    models: ['Grok 3 (Reasoning)', 'Grok 3 mini'],
-    tags: ['正版官方', 'SuperGrok', '深度推理'],
+    tags: ['正版官方', 'SuperGrok'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 2,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 19:30',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -333,25 +364,31 @@ export const initialAccounts: Account[] = [
       rollingWindow: {
         used: 8,
         total: 30,
-        windowDurationHours: 2,
+        windowDurationHours: 5,
         resetsAt: new Date(Date.now() + 4200 * 1000).toISOString(),
         cooldownSecondsRemaining: 4200,
+      },
+      sevenDayQuota: {
+        usedPercent: 27,
+        totalPercent: 100,
+        label: '27% 充盈',
       },
     },
   },
 
-  // DeepSeek 官方正版
+  // DeepSeek 官方
   {
     id: 'acc-deepseek-1',
-    name: 'DeepSeek 官方直连主号',
+    name: 'DeepSeek 官方主号',
+    email: 'deepseek.dev@163.com',
     platform: 'deepseek',
     provider: 'deepseek',
-    models: ['DeepSeek-R1 (深度推理)', 'DeepSeek-V3'],
-    tags: ['官方API', '满血开源', '充值账户'],
+    tags: ['官方API', '满血开源'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 1,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 22:15',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -363,21 +400,27 @@ export const initialAccounts: Account[] = [
         balance: 48.5,
         grantedAmount: 20.0,
       },
+      sevenDayQuota: {
+        usedPercent: 35,
+        totalPercent: 100,
+        label: '35% 结余充裕',
+      },
     },
   },
 
-  // Moonshot Kimi 官方正版
+  // Moonshot Kimi 官方
   {
     id: 'acc-kimi-1',
     name: 'Moonshot Kimi Code 专号',
+    email: 'kimi.user@moonshot.cn',
     platform: 'custom-api',
     provider: 'kimi',
-    models: ['Kimi K1.5 (长文本推理)', 'Kimi Code'],
-    tags: ['官方原生', 'Kimi Code', '超长上下文'],
+    tags: ['官方原生', 'Kimi Code'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 2,
     autoFailoverEnabled: true,
+    lastLoginAt: '2026-11-06 18:45',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -389,6 +432,11 @@ export const initialAccounts: Account[] = [
         balance: 35.8,
         grantedAmount: 15.0,
       },
+      sevenDayQuota: {
+        usedPercent: 20,
+        totalPercent: 100,
+        label: '20% 充沛',
+      },
     },
   },
 
@@ -396,14 +444,15 @@ export const initialAccounts: Account[] = [
   {
     id: 'acc-siliconflow-1',
     name: '硅基流动 满血托管号',
+    email: 'silicon.cloud@siliconflow.cn',
     platform: 'siliconflow',
     provider: 'siliconflow',
-    models: ['DeepSeek-R1 (满血671B)', 'Qwen-2.5-72B'],
-    tags: ['云端托管', '满血R1'],
+    tags: ['云端托管'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 2,
     autoFailoverEnabled: false,
+    lastLoginAt: '2026-11-06 17:20',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
       isHealthy: true,
@@ -414,21 +463,27 @@ export const initialAccounts: Account[] = [
         currency: 'CNY',
         balance: 89.2,
       },
+      sevenDayQuota: {
+        usedPercent: 15,
+        totalPercent: 100,
+        label: '15% 充足',
+      },
     },
   },
 
   // 第三方中转站示例 (对标 CCSwitch 中的 BossClaw)
   {
     id: 'acc-bossclaw-1',
-    name: 'BossClaw (企业分组中转)',
+    name: 'BossClaw (第三方中转)',
+    email: 'admin@bossclaw.org',
     platform: 'custom-api',
     provider: 'bossclaw',
-    models: ['Chatgpt5-pro', 'Claude 3.7 Sonnet'],
-    tags: ['第三方中转', '企业分组'],
+    tags: ['第三方中转'],
     enabled: true,
     isActiveInCCSwitch: false,
     priority: 3,
     autoFailoverEnabled: false,
+    lastLoginAt: '2026-11-06 23:05',
     endpoint: 'https://www.bossclaw.org/v1',
     latestSnapshot: {
       timestamp: new Date().toISOString(),
@@ -439,6 +494,11 @@ export const initialAccounts: Account[] = [
       currencyBalance: {
         currency: 'USD',
         balance: 13.46,
+      },
+      sevenDayQuota: {
+        usedPercent: 55,
+        totalPercent: 100,
+        label: '余额 $13.46',
       },
     },
   },

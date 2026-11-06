@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Zap, 
   Minus, 
   Square, 
   Copy, 
@@ -9,7 +8,8 @@ import {
   AppWindow, 
   Monitor 
 } from 'lucide-react';
-import { minimizeWindow, toggleMaximizeWindow, closeWindow, startDragging } from '../services/tauriBridge';
+import { toggleMaximizeWindow, closeWindow, minimizeWindow, startDragging } from '../services/tauriBridge';
+import { QuotaWatcherLogo } from './ProviderIcons';
 
 interface Props {
   viewMode: 'dashboard' | 'tray';
@@ -53,15 +53,15 @@ export const TitleBar: React.FC<Props> = ({
     >
       {/* Left: Brand Icon, Title & Status */}
       <div className="flex items-center gap-2.5 pointer-events-none">
-        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-sm shadow-blue-500/20">
-          <Zap className="h-3.5 w-3.5" />
+        <div className="flex h-6 w-6 items-center justify-center rounded-lg overflow-hidden border border-blue-500/30 shadow-xs shadow-blue-500/20">
+          <QuotaWatcherLogo className="h-6 w-6 object-cover" />
         </div>
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm tracking-tight text-white">
             QuotaWatcher
           </span>
           <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[10px] font-semibold text-blue-400 border border-blue-500/20 font-mono">
-            v0.1.7
+            v0.1.8
           </span>
         </div>
 
@@ -88,15 +88,11 @@ export const TitleBar: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Center Drag Region (Occupies available space) */}
+      {/* Center Drag Region (Occupies available space, free of clutter) */}
       <div
         data-tauri-drag-region
-        className="flex-1 h-full flex items-center justify-center text-xs text-slate-500/70 font-medium cursor-move"
-      >
-        <span className="hidden md:inline pointer-events-none">
-          多平台 AI 额度哨兵 · 自动巡检 · 智能切号
-        </span>
-      </div>
+        className="flex-1 h-full cursor-move"
+      />
 
       {/* Right: View Mode Toggle & Window Controls */}
       <div className="flex items-center gap-2 no-drag">

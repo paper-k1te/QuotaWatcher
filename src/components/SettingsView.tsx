@@ -5,19 +5,14 @@ import {
   Zap, 
   Info, 
   Plus, 
-  Check, 
   Trash2, 
   ShieldCheck, 
   RefreshCw, 
   ArrowRightLeft, 
-  Globe, 
   Server,
-  Sparkles,
   ExternalLink,
   BarChart3,
-  Sliders,
-  CheckCircle2,
-  Database
+  Sliders
 } from 'lucide-react';
 import { ProviderMeta, Account } from '../types';
 import { ProviderIcon } from './ProviderIcons';
@@ -203,7 +198,7 @@ export const SettingsView: React.FC<Props> = ({
                   </span>
                 </div>
                 <span className="text-[11px] text-slate-500">
-                  直连官方 Web/API 配额与并发窗口
+                  官方 Web/API 配额与并发窗口
                 </span>
               </div>
 

@@ -12,7 +12,6 @@ interface Props {
 
 export const CCSwitchSynergyBanner: React.FC<Props> = ({
   activeAccount,
-  ccSwitchPath = '~/.cc-switch',
   autoSwitchEnabled,
   onToggleAutoSwitch,
   onTriggerSimulateFailover,

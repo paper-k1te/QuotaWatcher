@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Key, Shield, PlusCircle, Check } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
-import { ProviderIcon } from './ProviderIcons';
 
 interface Props {
   isOpen: boolean;

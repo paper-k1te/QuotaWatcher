@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Server, Globe, Key, ShieldCheck, Sparkles } from 'lucide-react';
+import { X, Server, Globe, Sparkles } from 'lucide-react';
 import { ProviderMeta } from '../types';
 
 interface Props {

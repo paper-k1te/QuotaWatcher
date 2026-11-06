@@ -7,7 +7,6 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   XCircle,
-  ExternalLink,
   Layers
 } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';

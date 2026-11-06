@@ -7,18 +7,11 @@ import {
   LayoutGrid, 
   List, 
   Layers, 
-  Sparkles, 
-  ArrowRight,
-  Settings,
-  RefreshCw,
-  ShieldCheck,
-  ArrowRightLeft,
-  Calendar,
-  CheckCircle2,
-  Database
+  Database,
+  Sparkles
 } from 'lucide-react';
 import { initialAccounts, providersMeta as initialProvidersMeta } from './mock/mockData';
-import { Account, ProviderMeta, AccountClassification } from './types';
+import { Account, ProviderMeta } from './types';
 import { AccountCard } from './components/AccountCard';
 import { AccountRow } from './components/AccountRow';
 import { ProviderSidebar } from './components/ProviderSidebar';
@@ -56,7 +49,6 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid'>('list'); // Default to clean CCSwitch-style list
   const [selectedProvider, setSelectedProvider] = useState<string>('claude');
-  const [classificationFilter, setClassificationFilter] = useState<'all' | 'official' | 'relay' | 'routing'>('all');
   const [quotaDisplayMode, setQuotaDisplayMode] = useState<'left' | 'used'>('left');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
@@ -105,11 +97,10 @@ export const App: React.FC = () => {
               const newEntry: Account = {
                 id: `cc-${p.id}`,
                 name: p.name,
+                email: `${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@workspace.com`,
                 platform: isOfficial ? 'claude-web' : 'custom-api',
                 provider: targetProvider,
-                models: [p.model || (p.appType === 'claude' ? 'Claude 3.7 Sonnet' : 'GPT-4o')],
-                tags: [isOfficial ? '官方直连' : 'CC-Switch 号源', p.appType],
-                classification: isOfficial ? 'official' : 'relay',
+                tags: [p.appType],
                 enabled: true,
                 isActiveInCCSwitch: p.isCurrent,
                 priority: p.isCurrent ? 1 : 2,
@@ -117,6 +108,7 @@ export const App: React.FC = () => {
                 appType: p.appType,
                 ccSwitchProviderId: p.id,
                 endpoint: p.apiUrl,
+                lastLoginAt: '2026-11-06 23:20',
                 latestSnapshot: isOfficial ? {
                   timestamp: new Date().toISOString(),
                   isHealthy: true,
@@ -130,6 +122,11 @@ export const App: React.FC = () => {
                     resetsAt: new Date(Date.now() + 3600 * 1000).toISOString(),
                     cooldownSecondsRemaining: 3600,
                   },
+                  sevenDayQuota: {
+                    usedPercent: 26,
+                    totalPercent: 100,
+                    label: '26% 充沛',
+                  },
                 } : {
                   timestamp: new Date().toISOString(),
                   isHealthy: true,
@@ -139,6 +136,11 @@ export const App: React.FC = () => {
                   currencyBalance: {
                     currency: 'USD',
                     balance: 13.79,
+                  },
+                  sevenDayQuota: {
+                    usedPercent: 40,
+                    totalPercent: 100,
+                    label: '余额 $13.79',
                   },
                 },
               };
@@ -434,27 +436,10 @@ export const App: React.FC = () => {
     showToast(`🎉 成功添加新账号「${created.name}」`);
   };
 
-  // Filter accounts by selected provider AND classification filter
+  // Filter accounts by selected provider
   const filteredAccounts = accounts.filter((acc) => {
-    // 1. Provider filter
     if (selectedProvider !== 'all' && acc.provider !== selectedProvider) {
       return false;
-    }
-    // 2. Classification filter (直连 / 聚合 / 路由)
-    if (classificationFilter === 'official') {
-      const isOfficial =
-        acc.classification === 'official' ||
-        ['chatgpt', 'claude', 'antigravity', 'grok', 'deepseek', 'kimi'].includes(acc.provider);
-      if (!isOfficial) return false;
-    } else if (classificationFilter === 'relay') {
-      const isRelay =
-        acc.classification === 'relay' ||
-        ['bossclaw', 'siliconflow', 'openrouter', 'trae', 'tokendance'].includes(acc.provider) ||
-        providers[acc.provider]?.category === 'relay' ||
-        providers[acc.provider]?.isCustom;
-      if (!isRelay) return false;
-    } else if (classificationFilter === 'routing') {
-      if (!acc.autoFailoverEnabled) return false;
     }
     return true;
   });
@@ -581,11 +566,6 @@ export const App: React.FC = () => {
                             当前主力: {activeAccount.name}
                           </span>
                         )}
-                        {selectedProvider !== 'all' && providers[selectedProvider]?.badge && (
-                          <span className="hidden sm:inline-block rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 text-xs font-medium">
-                            {providers[selectedProvider]?.badge}
-                          </span>
-                        )}
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md">
                         {selectedProvider === 'all'
@@ -656,65 +636,6 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Subheader: Classification Filter Segmented Control (CC-Switch: 直连 · 路由 · 聚合) */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1 bg-[#0c0f18]/80 p-1 rounded-xl border border-slate-800/80 text-xs shadow-inner">
-                    <button
-                      onClick={() => setClassificationFilter('all')}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                        classificationFilter === 'all'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span>全部号源</span>
-                      <span className="text-[10px] opacity-75 font-mono">({accounts.length})</span>
-                    </button>
-
-                    <button
-                      onClick={() => setClassificationFilter('official')}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                        classificationFilter === 'official'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Zap className="h-3.5 w-3.5 text-amber-400" />
-                      <span>直连官方</span>
-                    </button>
-
-                    <button
-                      onClick={() => setClassificationFilter('relay')}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                        classificationFilter === 'relay'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Layers className="h-3.5 w-3.5 text-blue-400" />
-                      <span>聚合中转</span>
-                    </button>
-
-                    <button
-                      onClick={() => setClassificationFilter('routing')}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all ${
-                        classificationFilter === 'routing'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <ArrowRightLeft className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>智能路由</span>
-                    </button>
-                  </div>
-
-                  {/* Core Identity Reminder: Quota Sentinel Status Pill */}
-                  <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 font-mono">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span>正版配额秒级倒计时守护中</span>
-                  </div>
-                </div>
-
                 {/* Content Area: DIRECT FLAT DISPLAY (Zero Nested Box Layers!) */}
                 {layoutMode === 'list' ? (
                   /* 1. Flat List View (CCSwitch Inspired) */
@@ -736,9 +657,6 @@ export const App: React.FC = () => {
                                 <span className="font-semibold text-slate-200">{pMeta.name}</span>
                                 <span className="text-[11px] font-mono text-slate-500">({pAccounts.length})</span>
                               </div>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                {pMeta.supportedModels.slice(0, 2).join(' · ')}
-                              </span>
                             </div>
 
                             {/* Direct account rows */}

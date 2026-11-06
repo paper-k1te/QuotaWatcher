@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  Zap, 
   RotateCw, 
   Maximize2, 
   Minus, 
@@ -12,7 +11,7 @@ import {
   GripHorizontal
 } from 'lucide-react';
 import { Account } from '../types';
-import { ProviderIcon } from './ProviderIcons';
+import { ProviderIcon, QuotaWatcherLogo } from './ProviderIcons';
 import { setAlwaysOnTop, startDragging } from '../services/tauriBridge';
 
 interface Props {
@@ -67,8 +66,8 @@ export const TrayMiniWidget: React.FC<Props> = ({
       >
         {/* Left: Drag indicator & Logo */}
         <div data-tauri-drag-region className="flex items-center gap-2 pointer-events-none">
-          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-sm">
-            <Zap className="h-3.5 w-3.5" />
+          <div className="flex h-5 w-5 items-center justify-center rounded-md overflow-hidden border border-blue-500/30 shadow-xs">
+            <QuotaWatcherLogo className="h-5 w-5 object-cover" />
           </div>
           <span className="font-bold text-sm text-white tracking-tight">
             QuotaWatcher
@@ -205,7 +204,7 @@ export const TrayMiniWidget: React.FC<Props> = ({
                     )}
                   </div>
                   <div className="text-[11px] text-slate-400 font-mono truncate">
-                    {acc.models?.[0] || acc.provider}
+                    {acc.email || acc.provider}
                   </div>
                 </div>
               </div>

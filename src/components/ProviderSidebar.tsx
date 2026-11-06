@@ -3,9 +3,6 @@ import {
   Layers, 
   PanelLeftClose, 
   PanelLeftOpen, 
-  Zap, 
-  AlertTriangle, 
-  XCircle,
   Settings,
   BarChart3
 } from 'lucide-react';
@@ -177,23 +174,18 @@ export const ProviderSidebar: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Expanded Mode: Name, Models, Account Count & Badges */}
+              {/* Expanded Mode: Name, Account Count & Badges (No Models) */}
               {!isCollapsed && (
                 <div className="flex flex-1 items-center justify-between min-w-0">
-                  <div className="min-w-0 text-left">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[13.5px] truncate font-semibold text-slate-200 group-hover:text-white">
-                        {meta.name}
+                  <div className="min-w-0 text-left flex items-center gap-1.5">
+                    <span className="text-[13.5px] truncate font-semibold text-slate-200 group-hover:text-white">
+                      {meta.name}
+                    </span>
+                    {hasActiveInCCSwitch && (
+                      <span className="inline-flex items-center text-[10px] text-blue-400 bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.2 rounded font-semibold animate-pulse shrink-0">
+                        主力
                       </span>
-                      {hasActiveInCCSwitch && (
-                        <span className="inline-flex items-center text-[10px] text-blue-400 bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.2 rounded font-semibold animate-pulse">
-                          主力
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-mono truncate">
-                      {meta.supportedModels[0] || meta.badge}
-                    </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0 ml-1">
