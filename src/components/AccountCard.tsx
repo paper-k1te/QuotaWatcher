@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Account } from '../types';
 import { ProviderIcon } from './ProviderIcons';
+import { QuotaMechanism } from '../mock/providerPlans';
 
 interface Props {
   account: Account;
@@ -36,6 +37,16 @@ export const AccountCard: React.FC<Props> = ({
 
   const { latestSnapshot } = account;
   const isBalance = latestSnapshot?.kind === 'currency_balance' && !!latestSnapshot.currencyBalance;
+
+  // Determine actual quota mechanism
+  const mechanism: QuotaMechanism = 
+    account.quotaMechanism || 
+    latestSnapshot?.quotaMechanism || 
+    (isBalance ? 'balance_only' :
+     account.provider === 'siliconflow' || account.provider === 'openrouter' || account.provider === 'bossclaw' ? 'balance_only' :
+     account.provider === 'kimi' && account.planName?.includes('会员') ? 'weekly_only' :
+     latestSnapshot?.kind === 'periodic_tier' && !latestSnapshot.rollingWindow ? 'daily_quota' :
+     'dual_window');
 
   // Format 5h short countdown
   const format5hCountdown = (seconds: number) => {
@@ -119,10 +130,11 @@ export const AccountCard: React.FC<Props> = ({
     const p = plan.toLowerCase();
     if (p.includes('pro 5x') || p.includes('pro5x')) return 'bg-purple-500/20 text-purple-300 border-purple-500/40 font-bold';
     if (p.includes('r1') || p.includes('v3') || p.includes('满血')) return 'bg-sky-500/15 text-sky-300 border-sky-500/30 font-semibold';
-    if (p.includes('pro')) return 'bg-purple-500/15 text-purple-300 border-purple-500/30';
+    if (p.includes('pro') || p.includes('vip') || p.includes('会员') || p.includes('premium')) return 'bg-purple-500/15 text-purple-300 border-purple-500/30';
     if (p.includes('plus')) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-    if (p.includes('business') || p.includes('bussiness')) return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
+    if (p.includes('business') || p.includes('enterprise')) return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
     if (p.includes('team')) return 'bg-blue-500/15 text-blue-300 border-blue-500/30';
+    if (p.includes('按量') || p.includes('余额') || p.includes('api')) return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
     return 'bg-slate-800 text-slate-300 border-slate-700/60';
   };
 
@@ -248,60 +260,120 @@ export const AccountCard: React.FC<Props> = ({
           <span className="text-[11px] text-slate-500 shrink-0 ml-1">{account.lastLoginAt || '刚刚'}</span>
         </div>
 
-        {/* Content Body with SEPARATED 5h and 7day Quota Blocks */}
+        {/* Content Body: ADAPT TO MECHANISM */}
         <div className="my-3 space-y-2.5">
-          {/* Block 1: 5h 滚动额度 */}
-          <div className="rounded-xl bg-[#080b13] p-3 border border-slate-800/80">
-            <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
-              <span className="flex items-center gap-1 text-slate-400 font-medium">
-                <Clock className="w-3.5 h-3.5 text-blue-400" />
-                5小时滚动额度
-              </span>
-              <span className="font-mono font-semibold text-slate-200">
-                {rollingUsed} / {rollingTotal} 次 <span className="text-[11px] text-slate-400">({rollingPct}%)</span>
-              </span>
+          {mechanism === 'balance_only' ? (
+            /* Mode 1: 纯按量余额 */
+            <div className="rounded-xl bg-[#080b13] p-4 border border-emerald-500/20">
+              <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+                <span className="flex items-center gap-1 font-medium text-emerald-400">
+                  <Coins className="w-4 h-4" />
+                  可用账户余额
+                </span>
+                <span className="text-[11px] font-mono text-emerald-400/80 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  实时按量计费
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-2xl font-bold font-mono text-emerald-400 tracking-tight">
+                  {latestSnapshot?.currencyBalance?.currency === 'USD' ? '$' : '￥'}
+                  {(latestSnapshot?.currencyBalance?.balance ?? 20.0).toFixed(2)}
+                </span>
+                <span className="text-xs font-mono text-slate-400">
+                  {latestSnapshot?.currencyBalance?.currency ?? 'CNY'}
+                </span>
+              </div>
+              <div className="mt-3 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800/80 pt-2 font-mono">
+                <span>计费机制:</span>
+                <span className="text-slate-300">无周期限制 · 调用实时扣费</span>
+              </div>
             </div>
-
-            {/* Progress bar */}
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/80 border border-slate-700/50">
-              <div
-                className={`h-full transition-all duration-300 ${
-                  isExhausted ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-blue-500'
-                }`}
-                style={{ width: `${rollingPct}%` }}
-              />
+          ) : mechanism === 'weekly_only' ? (
+            /* Mode 2: 纯周度配额 */
+            <div className="rounded-xl bg-[#080b13] p-3.5 border border-purple-500/20">
+              <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
+                <span className="flex items-center gap-1 text-purple-300 font-medium">
+                  <Clock className="w-3.5 h-3.5 text-purple-400" />
+                  周度专属配额
+                </span>
+                <span className="font-mono font-semibold text-slate-200">
+                  {sevenDayPct}% <span className="text-[11px] text-slate-400">(充沛)</span>
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/80 border border-slate-700/50">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-300"
+                  style={{ width: `${sevenDayPct}%` }}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span>周重置倒计时:</span>
+                <span className="text-purple-300 font-semibold">
+                  ⏱ {formatWeeklyCountdown(sevenDayCooldown)} ({getWeeklyClockTime(sevenDayCooldown, sevenDayResetDesc)})
+                </span>
+              </div>
             </div>
-
-            {/* 5h Reset Countdown */}
-            <div className="mt-2 flex items-center justify-between text-[11px] font-mono">
-              <span className="text-slate-400">5h 重置倒计时:</span>
-              <span className={isExhausted ? 'text-rose-400 font-semibold' : 'text-blue-300 font-medium'}>
-                ⏱ {format5hCountdown(rollingCooldown)} ({get5hClockTime(rollingCooldown)})
-              </span>
+          ) : mechanism === 'daily_quota' ? (
+            /* Mode 3: 每日配额 */
+            <div className="rounded-xl bg-[#080b13] p-3.5 border border-sky-500/20">
+              <div className="flex items-center justify-between text-xs text-slate-300 mb-2">
+                <span className="flex items-center gap-1 text-sky-300 font-medium">
+                  <Clock className="w-3.5 h-3.5 text-sky-400" />
+                  每日请求配额 (RPD)
+                </span>
+                <span className="font-mono font-semibold text-slate-200">
+                  120 / 1500 次 <span className="text-[11px] text-slate-400">(8%)</span>
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/80 border border-slate-700/50">
+                <div
+                  className="h-full bg-sky-500 transition-all duration-300"
+                  style={{ width: `8%` }}
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span>每日刷新倒计时:</span>
+                <span className="text-sky-300 font-semibold">
+                  ⏱ {format5hCountdown(rollingCooldown)} (次日 00:00)
+                </span>
+              </div>
             </div>
-          </div>
-
-          {/* Block 2: 7day 周额度 / 余额 */}
-          <div className="rounded-xl bg-[#080b13] p-3 border border-slate-800/80">
-            {isBalance && latestSnapshot?.currencyBalance ? (
-              <div>
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Coins className="w-3.5 h-3.5 text-emerald-400" />
-                    可用账户余额
+          ) : (
+            /* Mode 4: 双重滚动配额 (5h + 7day) */
+            <>
+              {/* Block 1: 5h 滚动额度 */}
+              <div className="rounded-xl bg-[#080b13] p-3 border border-slate-800/80">
+                <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
+                  <span className="flex items-center gap-1 text-slate-400 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-blue-400" />
+                    5小时滚动额度
                   </span>
-                  <span className="text-sm font-mono font-bold text-emerald-400">
-                    {latestSnapshot.currencyBalance.currency === 'USD' ? '$' : '¥'}
-                    {latestSnapshot.currencyBalance.balance.toFixed(2)}
+                  <span className="font-mono font-semibold text-slate-200">
+                    {rollingUsed} / {rollingTotal} 次 <span className="text-[11px] text-slate-400">({rollingPct}%)</span>
                   </span>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-[11px] font-mono text-slate-400">
-                  <span>计费模式:</span>
-                  <span className="text-slate-300">API 实时扣费 · 无周期限制</span>
+
+                {/* Progress bar */}
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/80 border border-slate-700/50">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      isExhausted ? 'bg-rose-500' : isWarning ? 'bg-amber-400' : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${rollingPct}%` }}
+                  />
+                </div>
+
+                {/* 5h Reset Countdown */}
+                <div className="mt-2 flex items-center justify-between text-[11px] font-mono">
+                  <span className="text-slate-400">5h 重置倒计时:</span>
+                  <span className={isExhausted ? 'text-rose-400 font-semibold' : 'text-blue-300 font-medium'}>
+                    ⏱ {format5hCountdown(rollingCooldown)} ({get5hClockTime(rollingCooldown)})
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div>
+
+              {/* Block 2: 7day 周额度 */}
+              <div className="rounded-xl bg-[#080b13] p-3 border border-slate-800/80">
                 <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
                   <span className="flex items-center gap-1 text-slate-400 font-medium">
                     <Clock className="w-3.5 h-3.5 text-purple-400" />
@@ -312,7 +384,6 @@ export const AccountCard: React.FC<Props> = ({
                   </span>
                 </div>
 
-                {/* Weekly progress bar */}
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800/80 border border-slate-700/50">
                   <div
                     className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300"
@@ -320,7 +391,6 @@ export const AccountCard: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* 7day Reset Countdown */}
                 <div className="mt-2 flex items-center justify-between text-[11px] font-mono">
                   <span className="text-slate-400">周重置倒计时:</span>
                   <span className="text-purple-300 font-medium">
@@ -328,8 +398,8 @@ export const AccountCard: React.FC<Props> = ({
                   </span>
                 </div>
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 

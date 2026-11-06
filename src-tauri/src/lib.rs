@@ -188,12 +188,60 @@ if os.path.exists(dsh_creds):
                 'email': 'platform@deepseek.com',
                 'provider': 'deepseek',
                 'platform': 'deepseek-harness',
-                'planName': 'DeepSeek-V3 / R1 (满血)',
+                'planName': 'V3 / R1 官方满血版',
+                'quotaMechanism': 'dual_window',
                 'isOfficial': True,
                 'isActiveInCCSwitch': True,
                 'source': 'DeepSeek Harness Local Auth'
             })
     except Exception as e:
+        pass
+
+# 3. Check Claude Code Official (Exclude third-party relays)
+claude_settings = os.path.join(home, '.claude', 'settings.json')
+if os.path.exists(claude_settings):
+    try:
+        with open(claude_settings, 'r', encoding='utf-8') as f:
+            c_cfg = json.load(f)
+        env = c_cfg.get('env', {})
+        base_url = env.get('ANTHROPIC_BASE_URL', '').lower()
+        token = env.get('ANTHROPIC_AUTH_TOKEN', '')
+        if token and (not base_url or 'api.anthropic.com' in base_url) and token != 'any':
+            results.append({
+                'id': 'local-claude-official',
+                'name': 'Claude Official',
+                'email': 'anthropic@official.auth',
+                'provider': 'claude',
+                'platform': 'claude-web',
+                'planName': 'Pro ($20/月)',
+                'quotaMechanism': 'dual_window',
+                'isOfficial': True,
+                'isActiveInCCSwitch': True,
+                'source': 'Claude Code CLI Local Auth'
+            })
+    except Exception:
+        pass
+
+# 4. Check Gemini CLI Official
+gemini_settings = os.path.join(home, '.gemini', 'oauth_credentials.json')
+if os.path.exists(gemini_settings):
+    try:
+        with open(gemini_settings, 'r', encoding='utf-8') as f:
+            g_cfg = json.load(f)
+        if g_cfg.get('access_token'):
+            results.append({
+                'id': 'local-gemini-official',
+                'name': 'Gemini Official',
+                'email': g_cfg.get('email', 'google@official.auth'),
+                'provider': 'gemini',
+                'platform': 'gemini',
+                'planName': 'Google One AI Premium',
+                'quotaMechanism': 'weekly_only',
+                'isOfficial': True,
+                'isActiveInCCSwitch': True,
+                'source': 'Gemini CLI Local Auth'
+            })
+    except Exception:
         pass
 
 print(json.dumps({'success': True, 'accounts': results}))

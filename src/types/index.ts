@@ -92,6 +92,7 @@ export interface QuotaSnapshot {
   sevenDayQuota?: SevenDayQuotaData; // 7天周度额度
   secondaryTiers?: SecondaryTierData[]; // 多阶配额
   planName?: string; // 套餐级别：Claude Pro, Team, Plus, Google AI Pro 等
+  quotaMechanism?: 'dual_window' | 'weekly_only' | 'daily_quota' | 'balance_only'; // 专属使用形式
   errorMessage?: string;
 }
 
@@ -107,6 +108,7 @@ export interface Account {
   tags: string[];
   classification?: AccountClassification; // 渠道类别
   planName?: string; // 订阅档位：Pro / Team / Plus / Business / Free
+  quotaMechanism?: 'dual_window' | 'weekly_only' | 'daily_quota' | 'balance_only'; // 专属使用形式 (5h+7天双滚动 / 纯周度 / 每日RPD / 纯余额)
   planExpiresAt?: string; // 订阅到期时间，如 2026-11-30
   enabled: boolean;
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用

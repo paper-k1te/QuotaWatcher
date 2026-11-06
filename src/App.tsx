@@ -32,7 +32,7 @@ import {
   closeWindow 
 } from './services/tauriBridge';
 
-const STORAGE_KEY = 'quotawatcher_accounts_v4';
+const STORAGE_KEY = 'quotawatcher_accounts_v5';
 
 const loadStoredAccounts = (): Account[] => {
   try {
@@ -146,8 +146,9 @@ export const App: React.FC = () => {
               email: a.email || (isDeepSeek ? 'platform@deepseek.com' : '1044709853@qq.com'),
               platform: a.platform || (isDeepSeek ? 'deepseek-harness' : 'chatgpt-web'),
               provider: a.provider || (isDeepSeek ? 'deepseek' : 'chatgpt'),
-              planName: a.planName || (isDeepSeek ? 'DeepSeek-V3 / R1 (满血)' : 'Plus'),
+              planName: a.planName || (isDeepSeek ? 'V3 / R1 官方满血版' : 'Plus'),
               planExpiresAt: a.planExpiresAt,
+              quotaMechanism: a.quotaMechanism || 'dual_window',
               tags: [a.planName || (isDeepSeek ? '满血 V3/R1' : 'Plus'), '官方授权'],
               enabled: true,
               isActiveInCCSwitch: a.isActiveInCCSwitch || false,

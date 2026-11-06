@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, PlusCircle, Sparkles } from 'lucide-react';
+import { X, Key, PlusCircle, Sparkles, Coins, Clock, Calendar } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
 import { scanLocalAuthProviders } from '../services/tauriBridge';
+import { getPlansForProvider, QuotaMechanism } from '../mock/providerPlans';
 
 interface Props {
   isOpen: boolean;
@@ -24,11 +25,30 @@ export const AddAccountModal: React.FC<Props> = ({
   );
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [planName, setPlanName] = useState('Plus');
+  const [planName, setPlanName] = useState('');
   const [planExpiresAt, setPlanExpiresAt] = useState('');
+  const [quotaMechanism, setQuotaMechanism] = useState<QuotaMechanism>('dual_window');
+  const [balanceAmount, setBalanceAmount] = useState<number>(20.0);
+  const [balanceCurrency, setBalanceCurrency] = useState<'CNY' | 'USD'>('CNY');
+  const [dailyLimit, setDailyLimit] = useState<number>(1500);
   const [credential, setCredential] = useState('');
   const priority = 1;
   const [isScanning, setIsScanning] = useState(false);
+
+  // Sync plans when provider changes
+  useEffect(() => {
+    const plans = getPlansForProvider(selectedProviderId);
+    if (plans.length > 0) {
+      setPlanName(plans[0].name);
+      setQuotaMechanism(plans[0].quotaMechanism);
+      if (plans[0].defaultCurrency) {
+        setBalanceCurrency(plans[0].defaultCurrency);
+      }
+      if (plans[0].defaultDailyLimit) {
+        setDailyLimit(plans[0].defaultDailyLimit);
+      }
+    }
+  }, [selectedProviderId]);
 
   // Sync initial provider when modal opens
   useEffect(() => {
@@ -39,13 +59,25 @@ export const AddAccountModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
+  const currentPlans = getPlansForProvider(selectedProviderId);
+
+  // Handle plan dropdown change
+  const handlePlanChange = (pName: string) => {
+    setPlanName(pName);
+    const found = currentPlans.find((p) => p.name === pName);
+    if (found) {
+      setQuotaMechanism(found.quotaMechanism);
+      if (found.defaultCurrency) setBalanceCurrency(found.defaultCurrency);
+      if (found.defaultDailyLimit) setDailyLimit(found.defaultDailyLimit);
+    }
+  };
+
   // Auto scan local environment
   const handleScanLocal = async () => {
     setIsScanning(true);
     try {
       const res = await scanLocalAuthProviders();
       if (res.success && res.accounts && res.accounts.length > 0) {
-        // Find matching provider or take first
         const match = res.accounts.find((a: any) => a.provider === selectedProviderId) || res.accounts[0];
         if (match) {
           setSelectedProviderId(match.provider);
@@ -53,6 +85,7 @@ export const AddAccountModal: React.FC<Props> = ({
           setEmail(match.email || '');
           if (match.planName) setPlanName(match.planName);
           if (match.planExpiresAt) setPlanExpiresAt(match.planExpiresAt);
+          if (match.quotaMechanism) setQuotaMechanism(match.quotaMechanism);
         }
       }
     } catch (e) {
@@ -66,32 +99,37 @@ export const AddAccountModal: React.FC<Props> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    // Create appropriate initial snapshot based on provider quota type
-    const isRolling = ['claude', 'chatgpt', 'grok'].includes(selectedProviderId);
-    const isTier = selectedProviderId === 'antigravity';
-
     let snapshot: any;
-    if (isRolling) {
+    if (quotaMechanism === 'balance_only') {
       snapshot = {
         timestamp: new Date().toISOString(),
         isHealthy: true,
         isExhausted: false,
         isWarning: false,
-        kind: 'rolling_window',
-        rollingWindow: {
-          used: 0,
-          total: selectedProviderId === 'chatgpt' ? 80 : selectedProviderId === 'grok' ? 30 : 45,
-          windowDurationHours: 5,
-          resetsAt: new Date(Date.now() + 3600 * 5 * 1000).toISOString(),
-          cooldownSecondsRemaining: 3600 * 5,
+        kind: 'currency_balance',
+        currencyBalance: {
+          currency: balanceCurrency,
+          balance: Number(balanceAmount) || 20.0,
         },
-        sevenDayQuota: {
-          usedPercent: 10,
-          totalPercent: 100,
-          label: '10% 充沛',
-        },
+        quotaMechanism: 'balance_only',
       };
-    } else if (isTier) {
+    } else if (quotaMechanism === 'weekly_only') {
+      snapshot = {
+        timestamp: new Date().toISOString(),
+        isHealthy: true,
+        isExhausted: false,
+        isWarning: false,
+        kind: 'periodic_tier',
+        sevenDayQuota: {
+          usedPercent: 20,
+          totalPercent: 100,
+          cooldownSecondsRemaining: 3600 * 24 * 4 + 3600 * 18,
+          resetsAt: '周一 00:00',
+          label: '20% 充沛',
+        },
+        quotaMechanism: 'weekly_only',
+      };
+    } else if (quotaMechanism === 'daily_quota') {
       snapshot = {
         timestamp: new Date().toISOString(),
         isHealthy: true,
@@ -100,33 +138,43 @@ export const AddAccountModal: React.FC<Props> = ({
         kind: 'periodic_tier',
         periodicTier: {
           period: 'day',
-          used: 0,
-          limit: 1500,
+          used: 120,
+          limit: dailyLimit || 1500,
           unit: '次/天',
           resetsAt: new Date(Date.now() + 86400 * 1000).toISOString(),
         },
-        sevenDayQuota: {
-          usedPercent: 5,
-          totalPercent: 100,
-          label: '5% 充沛',
+        rollingWindow: {
+          used: 120,
+          total: dailyLimit || 1500,
+          windowDurationHours: 24,
+          resetsAt: '次日 00:00',
+          cooldownSecondsRemaining: 3600 * 22,
         },
+        quotaMechanism: 'daily_quota',
       };
     } else {
+      // dual_window
       snapshot = {
         timestamp: new Date().toISOString(),
         isHealthy: true,
         isExhausted: false,
         isWarning: false,
-        kind: 'currency_balance',
-        currencyBalance: {
-          currency: selectedProviderId === 'bossclaw' || selectedProviderId === 'openrouter' ? 'USD' : 'CNY',
-          balance: 20.0,
+        kind: 'rolling_window',
+        rollingWindow: {
+          used: 12,
+          total: selectedProviderId === 'chatgpt' ? 80 : selectedProviderId === 'deepseek' ? 50 : 45,
+          windowDurationHours: 5,
+          resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
+          cooldownSecondsRemaining: Math.floor(3600 * 2.5),
         },
         sevenDayQuota: {
-          usedPercent: 20,
+          usedPercent: 25,
           totalPercent: 100,
-          label: '余额正常',
+          cooldownSecondsRemaining: 3600 * 24 * 4 + 3600 * 18,
+          resetsAt: '周一 00:00',
+          label: '25% 充沛',
         },
+        quotaMechanism: 'dual_window',
       };
     }
 
@@ -137,11 +185,12 @@ export const AddAccountModal: React.FC<Props> = ({
       provider: selectedProviderId,
       planName: planName || undefined,
       planExpiresAt: planExpiresAt || undefined,
-      tags: [planName, '官方授权'],
+      quotaMechanism,
+      tags: [planName || '标准订阅', '官方授权'],
       priority,
       enabled: true,
       autoFailoverEnabled: true,
-      lastLoginAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      lastLoginAt: '刚刚',
       credentials: {
         apiKey: credential.trim(),
         sessionToken: credential.trim(),
@@ -154,7 +203,7 @@ export const AddAccountModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="relative w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0e121d] p-5 shadow-2xl">
+      <div className="relative w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0e121d] p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -163,7 +212,7 @@ export const AddAccountModal: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-100">添加官方授权账号</h2>
-              <p className="text-[11px] text-slate-400">凭证与会话仅本地加密保存，支持自动识别挡位与到期时间</p>
+              <p className="text-[11px] text-slate-400">支持各厂家专属套餐、不同使用形式与本地自动识别</p>
             </div>
           </div>
           <button
@@ -182,7 +231,7 @@ export const AddAccountModal: React.FC<Props> = ({
               <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
               <div className="text-xs">
                 <span className="font-semibold text-blue-300">自动检测本地官方登录</span>
-                <p className="text-[10.5px] text-slate-400">扫描 Codex CLI / CC-Switch 等本地会话，自动提取挡位与到期时间</p>
+                <p className="text-[10.5px] text-slate-400">智能扫描 Codex CLI、DeepSeek Harness 等本地授权会话</p>
               </div>
             </div>
             <button
@@ -223,7 +272,7 @@ export const AddAccountModal: React.FC<Props> = ({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="如：我的主号、Team 团队号、开发备用等"
+              placeholder="如：我的官方主号、团队主力号等"
               className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
             />
           </div>
@@ -246,19 +295,18 @@ export const AddAccountModal: React.FC<Props> = ({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                账号挡位 / 套餐
+                该厂专属套餐 / 档位
               </label>
               <select
                 value={planName}
-                onChange={(e) => setPlanName(e.target.value)}
+                onChange={(e) => handlePlanChange(e.target.value)}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
               >
-                <option value="Plus">Plus</option>
-                <option value="Pro">Pro</option>
-                <option value="Pro 5x">Pro (5x)</option>
-                <option value="Business">Business</option>
-                <option value="Team">Team</option>
-                <option value="Free">Free</option>
+                {currentPlans.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -275,10 +323,128 @@ export const AddAccountModal: React.FC<Props> = ({
             </div>
           </div>
 
+          {/* Quota Mechanism Selector (核心变通：使用形式) */}
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              配额使用形式 (根据各厂商实际计费模型变通)
+            </label>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setQuotaMechanism('dual_window')}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left transition-all ${
+                  quotaMechanism === 'dual_window'
+                    ? 'border-blue-500 bg-blue-500/15 text-blue-300'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                <div>
+                  <div className="font-semibold text-slate-200">双重滚动配额</div>
+                  <div className="text-[10px] text-slate-400">5h 滚动 + 7天周度</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQuotaMechanism('weekly_only')}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left transition-all ${
+                  quotaMechanism === 'weekly_only'
+                    ? 'border-purple-500 bg-purple-500/15 text-purple-300'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                <div>
+                  <div className="font-semibold text-slate-200">纯周度配额</div>
+                  <div className="text-[10px] text-slate-400">按 1 Week 循环重置</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQuotaMechanism('daily_quota')}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left transition-all ${
+                  quotaMechanism === 'daily_quota'
+                    ? 'border-blue-500 bg-blue-500/15 text-blue-300'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                <div>
+                  <div className="font-semibold text-slate-200">每日定额 (RPD)</div>
+                  <div className="text-[10px] text-slate-400">次日 00:00 自动刷新</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQuotaMechanism('balance_only')}
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-left transition-all ${
+                  quotaMechanism === 'balance_only'
+                    ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
+                    : 'border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <div>
+                  <div className="font-semibold text-slate-200">纯按量余额</div>
+                  <div className="text-[10px] text-slate-400">实时扣费 · 无周期限制</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Conditional inputs based on Quota Mechanism */}
+          {quotaMechanism === 'balance_only' && (
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+              <div>
+                <label className="block text-xs font-medium text-emerald-300 mb-1">
+                  初始账户余额
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={balanceAmount}
+                  onChange={(e) => setBalanceAmount(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-emerald-300 mb-1">
+                  结算币种
+                </label>
+                <select
+                  value={balanceCurrency}
+                  onChange={(e) => setBalanceCurrency(e.target.value as 'CNY' | 'USD')}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="CNY">人民币 (CNY ￥)</option>
+                  <option value="USD">美元 (USD $)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {quotaMechanism === 'daily_quota' && (
+            <div className="p-3 rounded-xl border border-sky-500/30 bg-sky-500/5">
+              <label className="block text-xs font-medium text-sky-300 mb-1">
+                每日可用请求限额 (次/天)
+              </label>
+              <input
+                type="number"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(Number(e.target.value))}
+                placeholder="如 1500"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:border-sky-500 focus:outline-none"
+              />
+            </div>
+          )}
+
           {/* Credential / Token */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              Session Token / API Key / 凭据 (选填，保存在本地)
+              Session Token / API Key / 凭据 (选填，仅加密保存在本地)
             </label>
             <div className="relative">
               <input
