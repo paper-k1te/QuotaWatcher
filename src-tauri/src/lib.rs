@@ -112,6 +112,105 @@ except Exception as e:
 }
 
 #[tauri::command]
+fn scan_local_auth_providers() -> serde_json::Value {
+    let script = r#"
+import os, json, base64
+
+home = os.path.expanduser('~')
+results = []
+
+# 1. Check Codex (OpenAI ChatGPT)
+codex_auth = os.path.join(home, '.codex', 'auth.json')
+if os.path.exists(codex_auth):
+    try:
+        with open(codex_auth, 'r', encoding='utf-8') as f:
+            d = json.load(f)
+        tokens = d.get('tokens', {})
+        id_token = tokens.get('id_token') or tokens.get('access_token')
+        email = ''
+        name = 'OpenAI Official'
+        plan = 'Plus'
+        expires_at = ''
+        if id_token and len(id_token.split('.')) == 3:
+            payload = id_token.split('.')[1]
+            padded = payload + '=' * (-len(payload) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(padded).decode('utf-8'))
+            email = claims.get('email') or claims.get('https://api.openai.com/profile', {}).get('email') or ''
+            name = claims.get('name') or claims.get('https://api.openai.com/profile', {}).get('name') or 'OpenAI Official'
+            auth_info = claims.get('https://api.openai.com/auth', {})
+            plan_raw = auth_info.get('chatgpt_plan_type', 'plus')
+            plan = 'Plus' if plan_raw == 'plus' else 'Pro' if plan_raw == 'pro' else 'Business' if 'biz' in plan_raw or 'bus' in plan_raw else 'Team' if 'team' in plan_raw else plan_raw.capitalize()
+            expires_raw = auth_info.get('chatgpt_subscription_active_until', '')
+            if expires_raw:
+                expires_at = expires_raw.split('T')[0]
+        results.append({
+            'id': 'local-codex-openai',
+            'name': name,
+            'email': email,
+            'provider': 'chatgpt',
+            'platform': 'chatgpt-web',
+            'planName': plan,
+            'planExpiresAt': expires_at,
+            'isOfficial': True,
+            'isActiveInCCSwitch': True,
+            'source': 'Codex CLI Local Auth'
+        })
+    except Exception as e:
+        pass
+
+# 2. Check CC-Switch DB
+db = os.path.join(home, '.cc-switch', 'cc-switch.db')
+if os.path.exists(db):
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db)
+        c = conn.cursor()
+        for r in c.execute('SELECT id, app_type, name, category, is_current, settings_config, meta FROM providers'):
+            app_type, p_name, cat, is_curr, s_cfg, meta = r[1], r[2], r[3], bool(r[4]), r[5], r[6]
+            if cat == 'official' and app_type in ['claude', 'gemini', 'agy', 'grokbuild']:
+                target_prov = 'claude' if app_type == 'claude' else 'antigravity' if app_type == 'agy' else 'gemini' if app_type == 'gemini' else 'grok'
+                results.append({
+                    'id': f'local-cc-{r[0]}',
+                    'name': p_name,
+                    'email': 'account@official.auth',
+                    'provider': target_prov,
+                    'platform': 'claude-web' if target_prov == 'claude' else 'gemini',
+                    'planName': 'Pro' if target_prov == 'claude' else 'Free Tier',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': is_curr,
+                    'source': 'CC-Switch Official Provider'
+                })
+        conn.close()
+    except Exception as e:
+        pass
+
+print(json.dumps({'success': True, 'accounts': results}))
+"#;
+
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "accounts": []
+    })
+}
+
+#[tauri::command]
 fn set_cc_switch_active_provider(app_type: String, provider_id: String) -> serde_json::Value {
     let script = format!(
         r#"
@@ -227,6 +326,7 @@ pub fn run(listener: std::net::TcpListener) {
         .invoke_handler(tauri::generate_handler![
             check_cc_switch,
             get_cc_switch_data,
+            scan_local_auth_providers,
             set_cc_switch_active_provider,
             window_minimize,
             window_toggle_maximize,

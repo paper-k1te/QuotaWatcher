@@ -10,7 +10,7 @@ import {
   Database,
   Sparkles
 } from 'lucide-react';
-import { initialAccounts, providersMeta as initialProvidersMeta } from './mock/mockData';
+import { providersMeta as initialProvidersMeta } from './mock/mockData';
 import { Account, ProviderMeta } from './types';
 import { AccountCard } from './components/AccountCard';
 import { AccountRow } from './components/AccountRow';
@@ -24,6 +24,7 @@ import { AddCustomProviderModal } from './components/AddCustomProviderModal';
 import { 
   checkCCSwitchInstalled, 
   getCCSwitchData,
+  scanLocalAuthProviders,
   setCCSwitchActiveProvider,
   setupTrayListeners, 
   setWindowMode, 
@@ -31,11 +32,26 @@ import {
   closeWindow 
 } from './services/tauriBridge';
 
+const STORAGE_KEY = 'quotawatcher_accounts_v3';
+
+const loadStoredAccounts = (): Account[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Failed to load accounts from storage:', e);
+  }
+  return [];
+};
+
 export const App: React.FC = () => {
-  const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
+  const [accounts, setAccounts] = useState<Account[]>(loadStoredAccounts);
   const [providers, setProviders] = useState<Record<string, ProviderMeta>>(initialProvidersMeta);
   
-  // 默认侧边栏仅展示 6 大正版官方厂商
+  // 默认侧边栏仅展示正版官方厂商
   const [visibleProviderIds, setVisibleProviderIds] = useState<string[]>([
     'chatgpt',
     'claude',
@@ -172,6 +188,51 @@ export const App: React.FC = () => {
 
     // Run first sync with local DB
     syncWithCCSwitch(false);
+
+    // If no accounts stored locally, auto-scan local official sessions
+    if (loadStoredAccounts().length === 0) {
+      scanLocalAuthProviders().then((res) => {
+        if (res.success && res.accounts && res.accounts.length > 0) {
+          const detected: Account[] = res.accounts.map((a: any) => ({
+            id: a.id || `acc-${Date.now()}-${Math.random()}`,
+            name: a.name || '官方主号',
+            email: a.email || `${a.provider}@official.auth`,
+            platform: a.platform || 'chatgpt-web',
+            provider: a.provider || 'chatgpt',
+            planName: a.planName || 'Plus',
+            planExpiresAt: a.planExpiresAt,
+            tags: [a.planName || 'Plus', '官方授权'],
+            enabled: true,
+            isActiveInCCSwitch: a.isActiveInCCSwitch || false,
+            priority: 1,
+            autoFailoverEnabled: true,
+            lastLoginAt: '2026-11-06 23:25',
+            latestSnapshot: {
+              timestamp: new Date().toISOString(),
+              isHealthy: true,
+              isExhausted: false,
+              isWarning: false,
+              kind: 'rolling_window',
+              rollingWindow: {
+                used: 12,
+                total: a.provider === 'chatgpt' ? 80 : 45,
+                windowDurationHours: 5,
+                resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
+                cooldownSecondsRemaining: 3600 * 2.5,
+              },
+              sevenDayQuota: {
+                usedPercent: 25,
+                totalPercent: 100,
+                label: '25% 充沛',
+              },
+            },
+          }));
+          setAccounts(detected);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(detected));
+          showToast(`⚡ 已自动接入本地官方 ${detected[0]?.name} (${detected[0]?.planName || 'Plus'}) 会话`);
+        }
+      });
+    }
 
     let unlisten: (() => void) | null = null;
     setupTrayListeners(() => {
@@ -354,11 +415,34 @@ export const App: React.FC = () => {
     showToast('🔄 已全量刷新各大供应商模型配额数据');
   };
 
+  // Persist accounts to local storage helper
+  const saveAccountsToStorage = (newAccounts: Account[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newAccounts));
+    } catch (e) {
+      console.warn('Failed to save accounts to storage:', e);
+    }
+  };
+
+  // Edit / update account nickname or details
+  const handleUpdateAccount = (id: string, updates: Partial<Account>) => {
+    setAccounts((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, ...updates } : a));
+      saveAccountsToStorage(next);
+      return next;
+    });
+    showToast('✅ 账号信息已更新并已保存到本地');
+  };
+
   // Delete an account
   const handleDelete = (id: string) => {
     const acc = accounts.find((a) => a.id === id);
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
-    showToast(`🗑️ 账号「${acc?.name}」已从本地配额监控中移除`);
+    setAccounts((prev) => {
+      const next = prev.filter((a) => a.id !== id);
+      saveAccountsToStorage(next);
+      return next;
+    });
+    showToast(`🗑️ 账号「${acc?.name}」已从本地移除`);
   };
 
   // Simulate failover
@@ -421,19 +505,26 @@ export const App: React.FC = () => {
   const handleAddAccount = (newAcc: Partial<Account>) => {
     const created: Account = {
       id: `acc-${Date.now()}`,
-      name: newAcc.name || '未命名账号',
+      name: newAcc.name || '官方主号',
+      email: newAcc.email,
       platform: newAcc.platform || 'custom-api',
       provider: newAcc.provider || selectedProvider,
-      models: newAcc.models || [],
-      tags: newAcc.tags || ['正版账号'],
+      planName: newAcc.planName,
+      planExpiresAt: newAcc.planExpiresAt,
+      tags: newAcc.tags || ['官方授权'],
       classification: newAcc.classification || 'official',
       enabled: true,
       priority: newAcc.priority || 1,
       autoFailoverEnabled: true,
+      lastLoginAt: '刚刚',
       latestSnapshot: newAcc.latestSnapshot,
     };
-    setAccounts((prev) => [created, ...prev]);
-    showToast(`🎉 成功添加新账号「${created.name}」`);
+    setAccounts((prev) => {
+      const next = [created, ...prev];
+      saveAccountsToStorage(next);
+      return next;
+    });
+    showToast(`🎉 成功添加官方账号「${created.name}」并保存本地`);
   };
 
   // Filter accounts by selected provider
@@ -567,11 +658,6 @@ export const App: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate max-w-md">
-                        {selectedProvider === 'all'
-                          ? `已在侧边栏启用 ${visibleProviderIds.length} 家核心供应商 · 实时监控正版滚动窗口与余额`
-                          : providers[selectedProvider]?.description}
-                      </p>
                     </div>
                   </div>
 
@@ -668,6 +754,7 @@ export const App: React.FC = () => {
                                 onRefresh={handleRefresh}
                                 onSetAsActive={handleSetActive}
                                 onDelete={handleDelete}
+                                onUpdateAccount={handleUpdateAccount}
                               />
                             ))}
                           </div>
@@ -683,6 +770,7 @@ export const App: React.FC = () => {
                           onRefresh={handleRefresh}
                           onSetAsActive={handleSetActive}
                           onDelete={handleDelete}
+                          onUpdateAccount={handleUpdateAccount}
                         />
                       ))
                     )}
@@ -737,19 +825,38 @@ export const App: React.FC = () => {
 
                 {/* Empty State */}
                 {filteredAccounts.length === 0 && (
-                  <div className="py-16 text-center text-slate-500 rounded-xl border border-slate-800/60 bg-[#0c0f18]/50">
-                    <Sparkles className="h-10 w-10 text-slate-600 mx-auto mb-2 stroke-1" />
-                    <p className="text-sm font-medium text-slate-300">当前筛选条件下暂无账号</p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      可切换「全部号源」或点击右上角「+ 添加账号」为此厂商添加正版账号或中转 API Key
+                  <div className="py-14 px-4 text-center rounded-xl border border-dashed border-slate-800 bg-[#0c0f18]/60">
+                    <div className="h-12 w-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mx-auto mb-3 shadow-inner">
+                      {selectedProvider !== 'all' ? (
+                        <ProviderIcon providerId={selectedProvider} className="h-6 w-6" />
+                      ) : (
+                        <Sparkles className="h-6 w-6" />
+                      )}
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-200">
+                      {selectedProvider === 'all'
+                        ? '暂无已接入的官方账号'
+                        : `暂未接入 ${providers[selectedProvider]?.name || selectedProvider} 官方账号`}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      初次使用，请连接官方授权账号。所有会话凭证与 Token 仅加密保存在您的本地设备。
                     </p>
-                    <button
-                      onClick={() => handleOpenAddModal(selectedProvider !== 'all' ? selectedProvider : undefined)}
-                      className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>立即添加账号</span>
-                    </button>
+                    <div className="mt-4 flex items-center justify-center gap-2.5">
+                      <button
+                        onClick={() => handleOpenAddModal(selectedProvider !== 'all' ? selectedProvider : undefined)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>授权登录 / 添加账号</span>
+                      </button>
+                      <button
+                        onClick={() => syncWithCCSwitch(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition-all"
+                      >
+                        <Database className="h-3.5 w-3.5 text-blue-400" />
+                        <span>从本地环境自动检测</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

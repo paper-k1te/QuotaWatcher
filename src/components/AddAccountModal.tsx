@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, Shield, PlusCircle, Check } from 'lucide-react';
+import { X, Key, PlusCircle, Sparkles } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
+import { scanLocalAuthProviders } from '../services/tauriBridge';
 
 interface Props {
   isOpen: boolean;
@@ -19,12 +20,15 @@ export const AddAccountModal: React.FC<Props> = ({
 }) => {
   const providerList = Object.values(providersMeta);
   const [selectedProviderId, setSelectedProviderId] = useState<string>(
-    initialProvider && initialProvider !== 'all' ? initialProvider : 'claude'
+    initialProvider && initialProvider !== 'all' ? initialProvider : 'chatgpt'
   );
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [planName, setPlanName] = useState('Plus');
+  const [planExpiresAt, setPlanExpiresAt] = useState('');
   const [credential, setCredential] = useState('');
-  const [tags, setTags] = useState('个人号, 开发主力');
-  const [priority, setPriority] = useState(1);
+  const priority = 1;
+  const [isScanning, setIsScanning] = useState(false);
 
   // Sync initial provider when modal opens
   useEffect(() => {
@@ -35,7 +39,28 @@ export const AddAccountModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const currentProviderMeta = providersMeta[selectedProviderId] || providerList[0];
+  // Auto scan local environment
+  const handleScanLocal = async () => {
+    setIsScanning(true);
+    try {
+      const res = await scanLocalAuthProviders();
+      if (res.success && res.accounts && res.accounts.length > 0) {
+        // Find matching provider or take first
+        const match = res.accounts.find((a: any) => a.provider === selectedProviderId) || res.accounts[0];
+        if (match) {
+          setSelectedProviderId(match.provider);
+          setName(match.name || '');
+          setEmail(match.email || '');
+          if (match.planName) setPlanName(match.planName);
+          if (match.planExpiresAt) setPlanExpiresAt(match.planExpiresAt);
+        }
+      }
+    } catch (e) {
+      console.warn('Scan local error:', e);
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,11 +79,16 @@ export const AddAccountModal: React.FC<Props> = ({
         isWarning: false,
         kind: 'rolling_window',
         rollingWindow: {
-          used: 2,
+          used: 0,
           total: selectedProviderId === 'chatgpt' ? 80 : selectedProviderId === 'grok' ? 30 : 45,
-          windowDurationHours: selectedProviderId === 'chatgpt' ? 3 : selectedProviderId === 'grok' ? 2 : 5,
-          resetsAt: new Date(Date.now() + 3600 * 3 * 1000).toISOString(),
-          cooldownSecondsRemaining: 3600 * 3,
+          windowDurationHours: 5,
+          resetsAt: new Date(Date.now() + 3600 * 5 * 1000).toISOString(),
+          cooldownSecondsRemaining: 3600 * 5,
+        },
+        sevenDayQuota: {
+          usedPercent: 10,
+          totalPercent: 100,
+          label: '10% 充沛',
         },
       };
     } else if (isTier) {
@@ -70,10 +100,15 @@ export const AddAccountModal: React.FC<Props> = ({
         kind: 'periodic_tier',
         periodicTier: {
           period: 'day',
-          used: 15,
+          used: 0,
           limit: 1500,
           unit: '次/天',
           resetsAt: new Date(Date.now() + 86400 * 1000).toISOString(),
+        },
+        sevenDayQuota: {
+          usedPercent: 5,
+          totalPercent: 100,
+          label: '5% 充沛',
         },
       };
     } else {
@@ -85,46 +120,50 @@ export const AddAccountModal: React.FC<Props> = ({
         kind: 'currency_balance',
         currencyBalance: {
           currency: selectedProviderId === 'bossclaw' || selectedProviderId === 'openrouter' ? 'USD' : 'CNY',
-          balance: 50.0,
-          grantedAmount: 10.0,
+          balance: 20.0,
+        },
+        sevenDayQuota: {
+          usedPercent: 20,
+          totalPercent: 100,
+          label: '余额正常',
         },
       };
     }
 
     onAdd({
       name: name.trim(),
+      email: email.trim() || undefined,
       platform: 'custom-api',
       provider: selectedProviderId,
-      models: currentProviderMeta.supportedModels,
-      tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
+      planName: planName || undefined,
+      planExpiresAt: planExpiresAt || undefined,
+      tags: [planName, '官方授权'],
       priority,
       enabled: true,
       autoFailoverEnabled: true,
+      lastLoginAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      credentials: {
+        apiKey: credential.trim(),
+        sessionToken: credential.trim(),
+      },
       latestSnapshot: snapshot,
     });
 
-    // Reset
-    setName('');
-    setCredential('');
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-800 bg-[#0d101a] p-5 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-in fade-in duration-150">
+      <div className="relative w-full max-w-lg rounded-2xl border border-slate-800 bg-[#0e121d] p-5 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/30">
               <PlusCircle className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white tracking-tight">
-                添加模型账号
-              </h2>
-              <p className="text-[11px] text-slate-400">
-                向指定 AI 厂商添加正版账号或中转 Key 进行监控
-              </p>
+              <h2 className="text-sm font-bold text-slate-100">添加官方授权账号</h2>
+              <p className="text-[11px] text-slate-400">凭证与会话仅本地加密保存，支持自动识别挡位与到期时间</p>
             </div>
           </div>
           <button
@@ -135,111 +174,138 @@ export const AddAccountModal: React.FC<Props> = ({
           </button>
         </div>
 
+        {/* Form */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
-          {/* Target Provider Selection */}
+          {/* Quick Scan Action */}
+          <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
+              <div className="text-xs">
+                <span className="font-semibold text-blue-300">自动检测本地官方登录</span>
+                <p className="text-[10.5px] text-slate-400">扫描 Codex CLI / CC-Switch 等本地会话，自动提取挡位与到期时间</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleScanLocal}
+              disabled={isScanning}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0 shadow-sm"
+            >
+              {isScanning ? '扫描中...' : '一键抓取'}
+            </button>
+          </div>
+
+          {/* Provider Selection */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              所属 AI 厂商
+              所属服务 / 厂商
             </label>
-            <div className="relative">
-              <select
-                value={selectedProviderId}
-                onChange={(e) => setSelectedProviderId(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
-              >
-                {providerList.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.badge})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedProviderId}
+              onChange={(e) => setSelectedProviderId(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
+            >
+              {providerList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Account Name */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              账号名称 / 备注 <span className="text-orange-400">*</span>
+              账号昵称 <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               required
-              placeholder="例如：个人主号 (Pro) / 团队备用号"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
+              placeholder="如：我的主号、Team 团队号、开发备用等"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
             />
           </div>
 
-          {/* Credential */}
+          {/* Email */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-medium text-slate-300">
-                鉴权凭证 (API Key / SessionKey / Token)
-              </label>
-              <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                <Shield className="w-2.5 h-2.5" />
-                本地加密存储
-              </span>
-            </div>
-            <div className="relative">
-              <input
-                type="password"
-                placeholder="sk-..."
-                value={credential}
-                onChange={(e) => setCredential(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none font-mono"
-              />
-              <Key className="absolute right-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
-            </div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              账号邮箱
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="如：name@gmail.com"
+              className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 font-mono focus:border-blue-500 focus:outline-none"
+            />
           </div>
 
-          {/* Priority & Tags */}
+          {/* Plan Tier & Expiry Date Row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                切号优先级 (P1最高)
+                账号挡位 / 套餐
               </label>
               <select
-                value={priority}
-                onChange={(e) => setPriority(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
+                value={planName}
+                onChange={(e) => setPlanName(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
               >
-                <option value={1}>P1 (主力，优先激活)</option>
-                <option value={2}>P2 (第一梯队备用)</option>
-                <option value={3}>P3 (第二梯队备用)</option>
+                <option value="Plus">Plus</option>
+                <option value="Pro">Pro</option>
+                <option value="Pro 5x">Pro (5x)</option>
+                <option value="Business">Business</option>
+                <option value="Team">Team</option>
+                <option value="Free">Free</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                分类标签
+                订阅到期时间
               </label>
               <input
-                type="text"
-                placeholder="主力, Claude Code"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
+                type="date"
+                value={planExpiresAt}
+                onChange={(e) => setPlanExpiresAt(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 text-xs text-slate-100 font-mono focus:border-blue-500 focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Submit */}
-          <div className="mt-5 flex items-center justify-end gap-2 pt-3 border-t border-slate-800/80">
+          {/* Credential / Token */}
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Session Token / API Key / 凭据 (选填，保存在本地)
+            </label>
+            <div className="relative">
+              <input
+                type="password"
+                value={credential}
+                onChange={(e) => setCredential(e.target.value)}
+                placeholder="sk-... 或 Session Token"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 font-mono focus:border-blue-500 focus:outline-none"
+              />
+              <Key className="absolute right-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+            </div>
+          </div>
+
+          {/* Modal Footer */}
+          <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-slate-200"
             >
               取消
             </button>
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all"
+              className="rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-orange-500/20"
             >
-              <Check className="h-3.5 w-3.5" />
-              <span>保存并加入监控</span>
+              确认添加
             </button>
           </div>
         </form>

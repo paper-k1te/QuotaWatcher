@@ -105,7 +105,8 @@ export interface Account {
   models?: string[]; // 常用/对应支持的模型名称
   tags: string[];
   classification?: AccountClassification; // 渠道类别
-  planName?: string; // 订阅档位：Pro / Team / Plus / API
+  planName?: string; // 订阅档位：Pro / Team / Plus / Business / Free
+  planExpiresAt?: string; // 订阅到期时间，如 2026-11-30
   enabled: boolean;
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用
   appType?: string; // 对应的 CLI 类型 (claude / codex / gemini / agy)

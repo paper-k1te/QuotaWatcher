@@ -81,6 +81,18 @@ export const setCCSwitchActiveProvider = async (
   }
 };
 
+export const scanLocalAuthProviders = async (): Promise<{ success: boolean; accounts: any[] }> => {
+  if (!isTauriEnvironment()) {
+    return { success: true, accounts: [] };
+  }
+  try {
+    return await invoke<{ success: boolean; accounts: any[] }>('scan_local_auth_providers');
+  } catch (err) {
+    console.warn('Failed to scan_local_auth_providers:', err);
+    return { success: false, accounts: [] };
+  }
+};
+
 export const checkCCSwitchInstalled = async (): Promise<CCSwitchDetectionResult> => {
   if (!isTauriEnvironment()) {
     // In web browser mock mode: simulate successful connection
