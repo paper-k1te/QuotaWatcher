@@ -16,6 +16,10 @@ interface Props {
   onToggleViewMode: (mode: 'dashboard' | 'tray') => void;
   activeCount: number;
   warningCount: number;
+  todayUsage?: {
+    costUsd: number;
+    totalTokens: number;
+  };
 }
 
 export const TitleBar: React.FC<Props> = ({
@@ -23,6 +27,7 @@ export const TitleBar: React.FC<Props> = ({
   onToggleViewMode,
   activeCount,
   warningCount,
+  todayUsage,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
 
@@ -54,14 +59,14 @@ export const TitleBar: React.FC<Props> = ({
             QuotaWatcher
           </span>
           <span className="rounded-full bg-blue-500/10 px-2 py-0.2 text-[10px] font-semibold text-blue-400 border border-blue-500/20 font-mono">
-            v0.1.5
+            v0.1.7
           </span>
         </div>
 
         <div className="hidden sm:flex items-center gap-1.5 ml-2 border-l border-slate-800 pl-2.5 text-xs text-slate-400">
           <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
             <ShieldCheck className="h-3.5 w-3.5" />
-            CC-Switch 已连通
+            CC-Switch 协同
           </span>
           <span className="text-slate-600">·</span>
           <span>
@@ -70,6 +75,14 @@ export const TitleBar: React.FC<Props> = ({
               <span className="text-amber-400 ml-1 font-medium">({warningCount} 告警)</span>
             )}
           </span>
+          {todayUsage && todayUsage.costUsd > 0 && (
+            <>
+              <span className="text-slate-600">·</span>
+              <span className="rounded bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.2 font-mono text-[11px] text-emerald-400">
+                今日 ${todayUsage.costUsd.toFixed(2)}
+              </span>
+            </>
+          )}
         </div>
       </div>
 

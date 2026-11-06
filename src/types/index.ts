@@ -65,6 +65,13 @@ export interface PeriodicTierData {
   resetsAt: string;
 }
 
+export interface SecondaryTierData {
+  name: string;
+  utilization: number; // 0 - 100
+  label?: string;
+  resetsAt?: string;
+}
+
 export interface QuotaSnapshot {
   timestamp: string;
   isHealthy: boolean;
@@ -74,8 +81,12 @@ export interface QuotaSnapshot {
   rollingWindow?: RollingWindowData;
   currencyBalance?: CurrencyBalanceData;
   periodicTier?: PeriodicTierData;
+  secondaryTiers?: SecondaryTierData[]; // 多阶配额：如 Claude 7天周度配额、Sonnet 3.7专项限额等
+  planName?: string; // 套餐级别：Claude Pro, Team, Plus, Google AI Pro 等
   errorMessage?: string;
 }
+
+export type AccountClassification = 'official' | 'relay' | 'routing';
 
 export interface Account {
   id: string;
@@ -84,8 +95,12 @@ export interface Account {
   provider: string; // 供应商归属 (chatgpt / claude / antigravity / grok / deepseek / kimi / 自定义中转等)
   models: string[]; // 常用/对应支持的模型名称
   tags: string[];
+  classification?: AccountClassification; // 渠道类别：直连官方 (official) | 聚合中转 (relay) | 智能路由 (routing)
+  planName?: string; // 订阅档位：Pro / Team / Plus / API
   enabled: boolean;
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用
+  appType?: string; // 对应的 CLI 类型 (claude / codex / gemini / agy)
+  ccSwitchProviderId?: string; // 对应 CC-Switch 数据库中的 provider id
   priority: number; // 优先级 (1-10)
   autoFailoverEnabled: boolean;
   endpoint?: string; // 自定义中转接口

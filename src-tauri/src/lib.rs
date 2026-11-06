@@ -35,6 +35,130 @@ fn check_cc_switch() -> serde_json::Value {
 }
 
 #[tauri::command]
+fn get_cc_switch_data() -> serde_json::Value {
+    let script = r#"
+import sqlite3, json, os, sys
+home = os.path.expanduser("~")
+db = os.path.join(home, ".cc-switch", "cc-switch.db")
+if not os.path.exists(db):
+    appdata = os.environ.get("APPDATA", "")
+    db = os.path.join(appdata, "cc-switch", "cc-switch.db")
+if not os.path.exists(db):
+    print(json.dumps({"success": False, "error": "cc-switch.db not found"}))
+    sys.exit(0)
+
+try:
+    conn = sqlite3.connect(db)
+    c = conn.cursor()
+    providers = []
+    for r in c.execute("SELECT id, app_type, name, category, is_current, settings_config FROM providers"):
+        cfg = {}
+        try:
+            cfg = json.loads(r[5]) if r[5] else {}
+        except:
+            pass
+        providers.append({
+            "id": r[0],
+            "appType": r[1],
+            "name": r[2],
+            "category": r[3] or "relay",
+            "isCurrent": bool(r[4]),
+            "apiUrl": cfg.get("apiUrl") or cfg.get("baseUrl") or "",
+            "model": cfg.get("model") or ""
+        })
+
+    cost = 0.0
+    tokens = 0
+    try:
+        res = c.execute("SELECT COALESCE(SUM(CAST(total_cost_usd AS REAL)), 0), COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_daily_rollups WHERE date = CURRENT_DATE").fetchone()
+        if res and res[0] > 0:
+            cost = round(float(res[0]), 2)
+            tokens = int(res[1])
+        else:
+            latest = c.execute("SELECT COALESCE(SUM(CAST(total_cost_usd AS REAL)), 0), COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_daily_rollups GROUP BY date ORDER BY date DESC LIMIT 1").fetchone()
+            if latest:
+                cost = round(float(latest[1]), 2)
+                tokens = int(latest[2])
+    except:
+        pass
+
+    conn.close()
+    print(json.dumps({"success": True, "dbPath": db, "providers": providers, "usage": {"costUsd": cost, "totalTokens": tokens}}))
+except Exception as e:
+    print(json.dumps({"success": False, "error": str(e)}))
+"#;
+
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "error": "Python not found or failed to query cc-switch.db"
+    })
+}
+
+#[tauri::command]
+fn set_cc_switch_active_provider(app_type: String, provider_id: String) -> serde_json::Value {
+    let script = format!(
+        r#"
+import sqlite3, json, os, sys
+home = os.path.expanduser("~")
+db = os.path.join(home, ".cc-switch", "cc-switch.db")
+if not os.path.exists(db):
+    appdata = os.environ.get("APPDATA", "")
+    db = os.path.join(appdata, "cc-switch", "cc-switch.db")
+try:
+    conn = sqlite3.connect(db)
+    c = conn.cursor()
+    c.execute("UPDATE providers SET is_current = 0 WHERE app_type = ?", ("{}",))
+    c.execute("UPDATE providers SET is_current = 1 WHERE app_type = ? AND id = ?", ("{}", "{}"))
+    conn.commit()
+    conn.close()
+    print(json.dumps({{"success": True, "active": "{}"}}))
+except Exception as e:
+    print(json.dumps({{"success": False, "error": str(e)}}))
+"#,
+        app_type, app_type, provider_id, provider_id
+    );
+
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", &script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "error": "Failed to update cc-switch active provider"
+    })
+}
+
+#[tauri::command]
 fn window_minimize(window: tauri::Window) {
     let _ = window.minimize();
 }
@@ -102,6 +226,8 @@ pub fn run(listener: std::net::TcpListener) {
         )
         .invoke_handler(tauri::generate_handler![
             check_cc_switch,
+            get_cc_switch_data,
+            set_cc_switch_active_provider,
             window_minimize,
             window_toggle_maximize,
             window_close,

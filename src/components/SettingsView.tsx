@@ -13,7 +13,11 @@ import {
   Globe, 
   Server,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  BarChart3,
+  Sliders,
+  CheckCircle2,
+  Database
 } from 'lucide-react';
 import { ProviderMeta, Account } from '../types';
 import { ProviderIcon } from './ProviderIcons';
@@ -35,6 +39,14 @@ interface Props {
   onToggleAutoSwitch: () => void;
   onTriggerSimulateFailover: () => void;
   onSelectActiveAccount: (accountId: string) => void;
+  onSyncFromCCSwitch: () => void;
+  todayUsage?: {
+    costUsd: number;
+    totalTokens: number;
+    latestDate?: string;
+  };
+  quotaDisplayMode?: 'left' | 'used';
+  onToggleQuotaDisplayMode?: (mode: 'left' | 'used') => void;
 }
 
 export const SettingsView: React.FC<Props> = ({
@@ -52,8 +64,13 @@ export const SettingsView: React.FC<Props> = ({
   onToggleAutoSwitch,
   onTriggerSimulateFailover,
   onSelectActiveAccount,
+  onSyncFromCCSwitch,
+  todayUsage,
+  quotaDisplayMode = 'left',
+  onToggleQuotaDisplayMode,
 }) => {
-  const [activeTab, setActiveTab] = useState<'providers' | 'ccswitch' | 'about'>('providers');
+  const [activeTab, setActiveTab] = useState<'providers' | 'ccswitch' | 'general' | 'about'>('providers');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const providerList = Object.values(providersMeta);
   const officialProviders = providerList.filter((p) => p.category === 'official');
@@ -61,6 +78,12 @@ export const SettingsView: React.FC<Props> = ({
   const relayProviders = providerList.filter((p) => p.category === 'relay' || p.isCustom);
 
   const activeAccount = accounts.find((a) => a.id === activeAccountId);
+
+  const handleManualSync = () => {
+    setIsSyncing(true);
+    onSyncFromCCSwitch();
+    setTimeout(() => setIsSyncing(false), 800);
+  };
 
   return (
     <div className="flex-1 flex overflow-hidden bg-[#080a10]">
@@ -107,6 +130,18 @@ export const SettingsView: React.FC<Props> = ({
               </button>
 
               <button
+                onClick={() => setActiveTab('general')}
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
+                  activeTab === 'general'
+                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30 font-semibold'
+                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                }`}
+              >
+                <Sliders className="h-4 w-4" />
+                <span>偏好与显示</span>
+              </button>
+
+              <button
                 onClick={() => setActiveTab('about')}
                 className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium transition-all ${
                   activeTab === 'about'
@@ -123,7 +158,7 @@ export const SettingsView: React.FC<Props> = ({
 
         {/* Footer info */}
         <div className="px-2 py-1 text-[11px] text-slate-500 font-mono">
-          QuotaWatcher v0.1.3
+          QuotaWatcher v0.1.7
         </div>
       </aside>
 
@@ -383,7 +418,7 @@ export const SettingsView: React.FC<Props> = ({
                 <div className="py-8 text-center text-slate-500 rounded-xl border border-dashed border-slate-800 bg-[#0d101a]/40">
                   <Server className="h-8 w-8 text-slate-600 mx-auto mb-2 stroke-1" />
                   <p className="text-xs text-slate-400">暂无第三方中转厂商</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">如果您使用了 NewAPI、OneAPI 等中转站，可点击上方按钮添加</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">如果您使用了 NewAPI、OneAPI、BossClaw 等中转站，可点击上方按钮添加</p>
                 </div>
               )}
             </div>
@@ -393,14 +428,26 @@ export const SettingsView: React.FC<Props> = ({
         {/* Tab 2: CC-Switch Synergy */}
         {activeTab === 'ccswitch' && (
           <div className="max-w-4xl space-y-6">
-            <div className="pb-4 border-b border-slate-800/80">
-              <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                <Zap className="h-4 w-4 text-blue-400" />
-                <span>CC-Switch 客户端协同联动</span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                深度联动 CC-Switch 客户端（如 Claude Code / Codex / Antigravity 插件），感知激活账号并在额度耗尽时自动切号。
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+              <div>
+                <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-blue-400" />
+                  <span>CC-Switch 客户端协同与数据直连</span>
+                </h1>
+                <p className="text-xs text-slate-400 mt-1">
+                  直接读取本地 SQLite 数据库（cc-switch.db），实时感知 CLI 激活配置，并在配额耗尽时自动故障转移。
+                </p>
+              </div>
+
+              {/* Sync Button */}
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-600/20 transition-all shrink-0 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? '正在同步...' : '从 CC-Switch 一键同步'}</span>
+              </button>
             </div>
 
             {/* Connection Status Card */}
@@ -408,26 +455,70 @@ export const SettingsView: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                  <span className="text-xs font-bold text-white">本地联动状态</span>
+                  <span className="text-xs font-bold text-white">本地数据库连通状态</span>
                 </div>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  已连通
+                  已连通 cc-switch.db
                 </span>
               </div>
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-400 mb-1">
-                  CC-Switch 配置路径
+                  CC-Switch 本地数据库路径
                 </label>
-                <input
-                  type="text"
-                  value={ccSwitchPath}
-                  onChange={(e) => onUpdateCcSwitchPath(e.target.value)}
-                  className="w-full rounded-lg border border-slate-800 bg-[#121624] px-3 py-1.5 text-xs text-slate-200 font-mono focus:border-blue-500 focus:outline-none"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={ccSwitchPath}
+                    onChange={(e) => onUpdateCcSwitchPath(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-800 bg-[#121624] px-3 py-1.5 text-xs text-slate-200 font-mono focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleManualSync}
+                    className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors"
+                  >
+                    重新校验
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* Today's Usage Rollup Card */}
+            {todayUsage && (
+              <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-blue-400" />
+                    <h3 className="text-xs font-bold text-white">今日消耗与 Token 吞吐统计</h3>
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    来源: usage_daily_rollups
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="rounded-lg bg-[#121624] p-3 border border-slate-800/80">
+                    <div className="text-[11px] text-slate-400">今日消费估算</div>
+                    <div className="text-lg font-bold font-mono text-emerald-400 mt-1">
+                      ${todayUsage.costUsd.toFixed(2)} USD
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-[#121624] p-3 border border-slate-800/80">
+                    <div className="text-[11px] text-slate-400">Token 吞吐量</div>
+                    <div className="text-lg font-bold font-mono text-blue-400 mt-1">
+                      {todayUsage.totalTokens.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 rounded-lg bg-[#121624] p-3 border border-slate-800/80">
+                    <div className="text-[11px] text-slate-400">最新记录日期</div>
+                    <div className="text-sm font-semibold font-mono text-slate-300 mt-1.5">
+                      {todayUsage.latestDate || '今日实时'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Active Account Selection */}
             <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3">
@@ -435,7 +526,7 @@ export const SettingsView: React.FC<Props> = ({
                 <div>
                   <h3 className="text-xs font-bold text-white">当前激活主号 (Coding 主选)</h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    终端 CLI / IDE 发起 Coding 请求时 CC-Switch 正在透传使用的账号
+                    终端 CLI / IDE 发起请求时 CC-Switch 正在透传使用的账号
                   </p>
                 </div>
                 {activeAccount && (
@@ -499,7 +590,95 @@ export const SettingsView: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Tab 3: About QuotaWatcher */}
+        {/* Tab 3: General Preferences & Display (Inspired by CC-Switch quota display) */}
+        {activeTab === 'general' && (
+          <div className="max-w-4xl space-y-6">
+            <div className="pb-4 border-b border-slate-800/80">
+              <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+                <Sliders className="h-4 w-4 text-blue-400" />
+                <span>偏好与显示设置</span>
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">
+                自定义额度显示逻辑、巡检频率与预警门限（参考 CC-Switch 国际化与配置规范）。
+              </p>
+            </div>
+
+            {/* Quota Display Mode (Left vs Used) */}
+            <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-white">配额展示维度 (Quota Display)</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    选择百分比进度条与主数值侧重显示「剩余配额」还是「已消耗配额」
+                  </p>
+                </div>
+                <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
+                  <button
+                    onClick={() => onToggleQuotaDisplayMode && onToggleQuotaDisplayMode('left')}
+                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                      quotaDisplayMode === 'left'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    显示剩余 (Left)
+                  </button>
+                  <button
+                    onClick={() => onToggleQuotaDisplayMode && onToggleQuotaDisplayMode('used')}
+                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                      quotaDisplayMode === 'used'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    显示已用 (Used)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Auto-Refresh Interval */}
+            <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3">
+              <div>
+                <h3 className="text-xs font-bold text-white">自动巡检与刷新周期</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  后台定时探测各大官方 Session 与 API 接口，保持秒级倒计时与配额精确度
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                {['1 分钟 (极速)', '5 分钟 (推荐)', '15 分钟', '30 分钟 (省电)'].map((label, idx) => (
+                  <button
+                    key={label}
+                    className={`rounded-lg p-2.5 text-xs text-center border font-medium transition-all ${
+                      idx === 1
+                        ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
+                        : 'border-slate-800 bg-[#121624] text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Warning Threshold */}
+            <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-white">低额度自动预警门限</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    当 5小时滚动剩余配额低于设定阈值时发出高亮预警
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                  低于 20%
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: About QuotaWatcher */}
         {activeTab === 'about' && (
           <div className="max-w-2xl space-y-5">
             <div className="flex items-center gap-4 rounded-2xl border border-slate-800 bg-[#0d101a] p-5">
@@ -510,7 +689,7 @@ export const SettingsView: React.FC<Props> = ({
                 <div className="flex items-center gap-2">
                   <h1 className="text-base font-bold text-white tracking-tight">QuotaWatcher</h1>
                   <span className="rounded-full bg-blue-500/10 border border-blue-500/30 px-2 py-0.2 text-[10px] font-mono text-blue-400">
-                    v0.1.3
+                    v0.1.7
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
@@ -520,12 +699,12 @@ export const SettingsView: React.FC<Props> = ({
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-[#0d101a] p-4 space-y-3 text-xs text-slate-300">
-              <h3 className="font-bold text-white">产品定位与设计原则</h3>
-              <ul className="space-y-1.5 list-disc list-inside text-slate-400">
-                <li><strong className="text-slate-200">正版账号直观查看：</strong> 专注正版官方账号（ChatGPT, Claude, Antigravity, Grok, DeepSeek, Kimi）的官方滚动配额与余额监控。</li>
-                <li><strong className="text-slate-200">第三方中转自主配置：</strong> 针对 NewAPI / OneAPI / 商业中转站，提供独立的添加厂商功能，不混淆官方标准。</li>
-                <li><strong className="text-slate-200">极简低干扰：</strong> 支持一键最小化至 Windows 系统托盘，单例防重启动，秒级唤醒。</li>
-                <li><strong className="text-slate-200">生态协同：</strong> 与 CC-Switch 客户端无缝联动，提供断号感知与自动平滑故障转移。</li>
+              <h3 className="font-bold text-white">核心优势与 CC-Switch 差异化定位</h3>
+              <ul className="space-y-2 list-disc list-inside text-slate-400">
+                <li><strong className="text-slate-200">额度实时查看 (核心差异)：</strong> 深度解析 5小时动态滚动窗口、7天周度限额、专项模型配额与实时倒计时，不仅仅是配置切换，更是配额哨兵。</li>
+                <li><strong className="text-slate-200">正版账号直观呈现：</strong> 专注正版官方账号（ChatGPT, Claude, Antigravity, Grok, DeepSeek, Kimi）的原生监控与并发限制。</li>
+                <li><strong className="text-slate-200">第三方中转自主配置：</strong> NewAPI / OneAPI / 自建中转站独立分区，支持直连/路由/聚合三种模式极速切换。</li>
+                <li><strong className="text-slate-200">双向无缝联动：</strong> 1-Click 读写 CC-Switch 数据库（cc-switch.db），切号即时生效，无缝故障转移。</li>
               </ul>
             </div>
 

@@ -6,8 +6,79 @@ export interface CCSwitchDetectionResult {
   path: string;
 }
 
+export interface CCSwitchProvider {
+  id: string;
+  appType: string;
+  name: string;
+  category: string;
+  isCurrent: boolean;
+  apiUrl?: string;
+  model?: string;
+}
+
+export interface CCSwitchUsage {
+  costUsd: number;
+  totalTokens: number;
+  requestCount?: number;
+  latestDate?: string;
+}
+
+export interface CCSwitchDataResult {
+  success: boolean;
+  dbPath?: string;
+  providers?: CCSwitchProvider[];
+  usage?: CCSwitchUsage;
+  error?: string;
+}
+
 export const isTauriEnvironment = (): boolean => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+};
+
+export const getCCSwitchData = async (): Promise<CCSwitchDataResult> => {
+  if (!isTauriEnvironment()) {
+    return {
+      success: true,
+      dbPath: 'C:\\Users\\10447\\.cc-switch\\cc-switch.db (Mock)',
+      providers: [
+        { id: 'claude-official', appType: 'claude', name: 'Claude Official', category: 'official', isCurrent: false },
+        { id: 'bossclaw-1784983947130', appType: 'claude', name: 'BossClaw', category: 'relay', isCurrent: true },
+        { id: 'codex-official', appType: 'codex', name: 'OpenAI Official', category: 'official', isCurrent: false },
+        { id: 'bossclaw-1789039948461', appType: 'codex', name: 'BossClaw', category: 'relay', isCurrent: true },
+        { id: 'gemini-official', appType: 'gemini', name: 'Google Official', category: 'official', isCurrent: true },
+      ],
+      usage: {
+        costUsd: 6.08,
+        totalTokens: 762069,
+      },
+    };
+  }
+  try {
+    return await invoke<CCSwitchDataResult>('get_cc_switch_data');
+  } catch (err) {
+    console.warn('Failed to get_cc_switch_data:', err);
+    return { success: false, error: String(err) };
+  }
+};
+
+export const setCCSwitchActiveProvider = async (
+  appType: string,
+  providerId: string
+): Promise<boolean> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] setCCSwitchActiveProvider:', appType, providerId);
+    return true;
+  }
+  try {
+    const res = await invoke<{ success: boolean }>('set_cc_switch_active_provider', {
+      appType,
+      providerId,
+    });
+    return res.success;
+  } catch (err) {
+    console.warn('Failed to set_cc_switch_active_provider:', err);
+    return false;
+  }
 };
 
 export const checkCCSwitchInstalled = async (): Promise<CCSwitchDetectionResult> => {

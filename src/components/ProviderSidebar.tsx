@@ -6,7 +6,8 @@ import {
   Zap, 
   AlertTriangle, 
   XCircle,
-  Settings
+  Settings,
+  BarChart3
 } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
 import { ProviderIcon } from './ProviderIcons';
@@ -21,6 +22,10 @@ interface Props {
   visibleProviderIds: string[];
   isSettingsOpen: boolean;
   onOpenSettings: () => void;
+  todayUsage?: {
+    costUsd: number;
+    totalTokens: number;
+  };
 }
 
 export const ProviderSidebar: React.FC<Props> = ({
@@ -207,8 +212,35 @@ export const ProviderSidebar: React.FC<Props> = ({
         })}
       </div>
 
-      {/* Sidebar Footer: Settings Button (Aligned with CCSwitch bottom left ⚙ 设置) */}
-      <div className="border-t border-slate-800/60 p-2">
+      {/* Sidebar Footer: Today's Usage Rollup & Settings Button (Aligned with CCSwitch) */}
+      <div className="border-t border-slate-800/60 p-2 space-y-1.5">
+        {/* Today's Token & Cost Rollup */}
+        {!isCollapsed ? (
+          <div className="rounded-xl border border-slate-800/80 bg-[#121624]/60 p-2.5 shadow-sm">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5 font-medium text-slate-400">
+                <BarChart3 className="h-3.5 w-3.5 text-blue-400" />
+                <span>用量统计 · 今日</span>
+              </span>
+              <span className="font-mono font-bold text-emerald-400">
+                ${todayUsage?.costUsd.toFixed(2) || '0.00'}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] font-mono text-slate-500">
+              <span>Token 吞吐</span>
+              <span>{(todayUsage?.totalTokens || 0).toLocaleString()}</span>
+            </div>
+          </div>
+        ) : (
+          <div
+            className="flex h-9 w-full items-center justify-center rounded-xl bg-slate-800/40 text-slate-400 hover:text-emerald-400 transition-colors"
+            title={`用量统计 今日: $${todayUsage?.costUsd.toFixed(2) || '0.00'} (${(todayUsage?.totalTokens || 0).toLocaleString()} Tokens)`}
+          >
+            <BarChart3 className="h-4 w-4" />
+          </div>
+        )}
+
+        {/* Settings Button */}
         <button
           onClick={onOpenSettings}
           className={`flex w-full items-center rounded-xl transition-all duration-150 ${
