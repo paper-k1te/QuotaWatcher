@@ -2418,7 +2418,6 @@ name = "quota-watcher"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
- "indexmap 1.9.3",
  "log",
  "serde",
  "serde_json",
