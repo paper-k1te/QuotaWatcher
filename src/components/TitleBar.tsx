@@ -31,10 +31,12 @@ export const TitleBar: React.FC<Props> = ({
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
 
-  const handleDoubleClick = () => {
+  const handleToggleMaximize = () => {
     toggleMaximizeWindow();
     setIsMaximized(!isMaximized);
   };
+
+  const handleDoubleClick = handleToggleMaximize;
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {

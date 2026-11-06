@@ -38,6 +38,7 @@ export const ProviderSidebar: React.FC<Props> = ({
   visibleProviderIds,
   isSettingsOpen,
   onOpenSettings,
+  todayUsage,
 }) => {
   // Only display providers that are included in visibleProviderIds
   const displayProviderKeys = Object.keys(providersMeta).filter((id) =>
