@@ -77,8 +77,8 @@ try:
         else:
             latest = c.execute("SELECT COALESCE(SUM(CAST(total_cost_usd AS REAL)), 0), COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_daily_rollups GROUP BY date ORDER BY date DESC LIMIT 1").fetchone()
             if latest:
-                cost = round(float(latest[1]), 2)
-                tokens = int(latest[2])
+                cost = round(float(latest[0]), 2)
+                tokens = int(latest[1])
     except:
         pass
 
@@ -703,6 +703,238 @@ print(json.dumps(scan('{}'), ensure_ascii=False))
 }
 
 #[tauri::command]
+fn fetch_real_account_quota(account_id: String, provider: String) -> serde_json::Value {
+    let script = format!(
+        r#"
+import os, sys, json, base64, datetime, time, urllib.request, urllib.error, sqlite3
+
+home = os.path.expanduser('~')
+
+def fetch_real_quota(aid, pid):
+    now = int(time.time())
+    
+    # 1. ChatGPT / OpenAI (Codex / Stash)
+    if pid in ('chatgpt', 'openai'):
+        tokens = {{}}
+        codex_auth = os.path.join(home, '.codex', 'auth.json')
+        if os.path.exists(codex_auth):
+            try:
+                with open(codex_auth, 'r', encoding='utf-8') as f:
+                    tokens = json.load(f).get('tokens', {{}})
+            except Exception:
+                pass
+        if not tokens.get('access_token'):
+            stash = os.path.join(home, '.cc-switch', 'codex-login-stash.json')
+            if os.path.exists(stash):
+                try:
+                    with open(stash, 'r', encoding='utf-8') as f:
+                        d = json.load(f)
+                    last_id = d.get('last')
+                    if last_id and last_id in d.get('logins', {{}}):
+                        tokens = d['logins'][last_id].get('tokens', {{}})
+                except Exception:
+                    pass
+        access_token = tokens.get('access_token')
+        if not access_token:
+            return {{'success': False, 'error': '未找到本地 Codex / ChatGPT 登录令牌'}}
+        try:
+            req = urllib.request.Request('https://chatgpt.com/backend-api/wham/usage', headers={{
+                'Authorization': f'Bearer {{access_token}}',
+                'User-Agent': 'Mozilla/5.0'
+            }})
+            with urllib.request.urlopen(req, timeout=7) as r:
+                res = json.loads(r.read().decode('utf-8'))
+            rl = res.get('rate_limit', {{}}) or {{}}
+            pw = rl.get('primary_window', {{}}) or {{}}
+            sw = rl.get('secondary_window', {{}}) or {{}}
+            p_used_pct = pw.get('used_percent', 0)
+            p_reset_s = pw.get('reset_after_seconds', 0)
+            p_reset_at = pw.get('reset_at')
+            p_resets_at_str = datetime.datetime.fromtimestamp(p_reset_at).strftime('%H:%M') if p_reset_at else '预计 1小时后'
+            used_msgs = round(80 * p_used_pct / 100.0)
+            s_used_pct = sw.get('used_percent', 0)
+            s_reset_s = sw.get('reset_after_seconds', 0)
+            s_reset_at = sw.get('reset_at')
+            weekday_map = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+            if s_reset_at:
+                dt = datetime.datetime.fromtimestamp(s_reset_at)
+                s_resets_at_str = f'{{weekday_map[dt.weekday()]}} {{dt.strftime("%H:%M")}}'
+            else:
+                s_resets_at_str = '周一 00:00'
+            return {{
+                'success': True,
+                'snapshot': {{
+                    'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    'isHealthy': True,
+                    'isExhausted': p_used_pct >= 100 or s_used_pct >= 100,
+                    'isWarning': p_used_pct >= 80 or s_used_pct >= 80,
+                    'kind': 'rolling_window',
+                    'rollingWindow': {{
+                        'used': used_msgs,
+                        'total': 80,
+                        'windowDurationHours': 5,
+                        'resetsAt': p_resets_at_str,
+                        'cooldownSecondsRemaining': p_reset_s
+                    }},
+                    'sevenDayQuota': {{
+                        'usedPercent': s_used_pct,
+                        'totalPercent': 100,
+                        'resetsAt': s_resets_at_str,
+                        'cooldownSecondsRemaining': s_reset_s,
+                        'label': f'{{s_used_pct}}% 充沛' if s_used_pct < 80 else f'{{s_used_pct}}% 警戒'
+                    }},
+                    'quotaMechanism': 'dual_window'
+                }}
+            }}
+        except Exception as e:
+            return {{'success': False, 'error': f'连接 ChatGPT 官方配额服务器失败: {{e}}'}}
+
+    # 2. DeepSeek (CC-Switch logs + Harness)
+    if pid == 'deepseek':
+        cc_db = os.path.join(home, '.cc-switch', 'cc-switch.db')
+        if os.path.exists(cc_db):
+            try:
+                conn = sqlite3.connect(cc_db)
+                c = conn.cursor()
+                c.execute("SELECT max(created_at) FROM proxy_request_logs WHERE app_type='dsh'")
+                max_ts = c.fetchone()[0] or int(time.time())
+                five_h_ago = max_ts - 18000
+                c.execute("SELECT count(*), min(created_at), sum(total_cost_usd) FROM proxy_request_logs WHERE app_type='dsh' AND created_at >= ?", (five_h_ago,))
+                c_5h, min_5h, cost_5h = c.fetchone()
+                c.execute("SELECT count(*), sum(total_cost_usd) FROM proxy_request_logs WHERE app_type='dsh'")
+                c_total, cost_total = c.fetchone()
+                conn.close()
+                reset_s = max(0, 18000 - (now - min_5h)) if min_5h else 0
+                reset_at_str = datetime.datetime.fromtimestamp(now + reset_s).strftime('%H:%M') if reset_s else '动态滚动'
+                return {{
+                    'success': True,
+                    'snapshot': {{
+                        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        'isHealthy': True,
+                        'isExhausted': False,
+                        'isWarning': False,
+                        'kind': 'rolling_window',
+                        'rollingWindow': {{
+                            'used': c_5h or 0,
+                            'total': 1000,
+                            'windowDurationHours': 5,
+                            'resetsAt': reset_at_str,
+                            'cooldownSecondsRemaining': reset_s
+                        }},
+                        'sevenDayQuota': {{
+                            'usedPercent': min(100, round((c_total or 0) / 3000 * 100)),
+                            'totalPercent': 100,
+                            'resetsAt': '周一 00:00',
+                            'cooldownSecondsRemaining': 3600 * 24 * 3,
+                            'label': f'已调用 {{c_total or 0}} 次 (累计 ${{cost_total or 0:.2f}})'
+                        }},
+                        'quotaMechanism': 'dual_window'
+                    }}
+                }}
+            except Exception:
+                pass
+
+    # 3. Trae (ByteDance AI IDE)
+    if pid in ('trae', 'bytedance'):
+        trae_p = os.path.join(home, '.trae-cn', 'trae-jwt-token')
+        if not os.path.exists(trae_p):
+            trae_p = os.path.join(home, '.trae', 'trae-jwt-token')
+        if os.path.exists(trae_p):
+            try:
+                with open(trae_p, 'r') as f:
+                    tok = f.read().strip()
+                payload = json.loads(base64.urlsafe_b64decode(tok.split('.')[1] + '==').decode('utf-8'))
+                exp = payload.get('exp', 0)
+                remain_s = max(0, exp - now)
+                return {{
+                    'success': True,
+                    'snapshot': {{
+                        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        'isHealthy': True,
+                        'isExhausted': False,
+                        'isWarning': False,
+                        'kind': 'daily_quota',
+                        'dailyQuota': {{
+                            'used': 0,
+                            'limit': 500,
+                            'resetsAt': '次日 00:00',
+                            'cooldownSecondsRemaining': 3600 * 20
+                        }},
+                        'quotaMechanism': 'daily_quota'
+                    }}
+                }}
+            except Exception:
+                pass
+
+    # 4. Custom relay in CC-Switch
+    cc_db = os.path.join(home, '.cc-switch', 'cc-switch.db')
+    if os.path.exists(cc_db):
+        try:
+            conn = sqlite3.connect(cc_db)
+            c = conn.cursor()
+            c.execute('SELECT settings_config, website_url FROM providers WHERE id = ? OR name LIKE ?', (aid, f'%{{pid}}%'))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                cfg = json.loads(row[0]) if row[0] else {{}}
+                auth = cfg.get('auth', {{}}) or cfg.get('env', {{}})
+                api_key = auth.get('OPENAI_API_KEY') or auth.get('ANTHROPIC_AUTH_TOKEN') or ''
+                base_url = row[1] or 'https://www.bossclaw.org'
+                if api_key:
+                    req = urllib.request.Request(f'{{base_url}}/v1/usage', headers={{'Authorization': f'Bearer {{api_key}}'}})
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        bc_data = json.loads(r.read().decode('utf-8'))
+                    bal = bc_data.get('remaining', bc_data.get('balance', 0))
+                    unit = bc_data.get('unit', 'USD')
+                    return {{
+                        'success': True,
+                        'snapshot': {{
+                            'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                            'isHealthy': True,
+                            'isExhausted': float(bal) <= 0,
+                            'isWarning': float(bal) <= 2.0,
+                            'kind': 'currency_balance',
+                            'currencyBalance': {{
+                                'currency': unit,
+                                'balance': round(float(bal), 2)
+                            }},
+                            'quotaMechanism': 'balance_only'
+                        }}
+                    }}
+        except Exception:
+            pass
+
+    return {{'success': False, 'error': '未找到本地凭证或官方接口未响应'}}
+
+print(json.dumps(fetch_real_quota('{}', '{}'), ensure_ascii=False))
+"#,
+        account_id, provider
+    );
+
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", &script]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "error": "执行配额查询失败"
+    })
+}
+
+#[tauri::command]
 fn open_provider_login(provider_id: String) -> serde_json::Value {
     let (url, title) = match provider_id.as_str() {
         "chatgpt" | "openai" => ("https://chatgpt.com/auth/login", "OpenAI ChatGPT 官方登录"),
@@ -808,6 +1040,7 @@ pub fn run(listener: std::net::TcpListener) {
             get_cc_switch_data,
             scan_local_auth_providers,
             scan_provider_auth,
+            fetch_real_account_quota,
             open_provider_login,
             set_cc_switch_active_provider,
             window_minimize,

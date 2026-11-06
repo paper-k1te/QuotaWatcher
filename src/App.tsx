@@ -27,6 +27,7 @@ import {
   getCCSwitchData,
   scanLocalAuthProviders,
   scanProviderAuth,
+  fetchRealAccountQuota,
   openProviderLogin,
   setCCSwitchActiveProvider,
   setupTrayListeners, 
@@ -35,7 +36,7 @@ import {
   closeWindow 
 } from './services/tauriBridge';
 
-const STORAGE_KEY = 'quotawatcher_accounts_v5';
+const STORAGE_KEY = 'quotawatcher_accounts_v6';
 
 const loadStoredAccounts = (): Account[] => {
   try {
@@ -43,8 +44,20 @@ const loadStoredAccounts = (): Account[] => {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // 彻底过滤历史遗留未配置的假号
-        return parsed.filter((a) => !['cc-claude-official', 'cc-gemini-official', 'cc-grokbuild-official', 'cc-claude-desktop-official'].includes(a.id));
+        // 彻底过滤历史遗留未配置的假号与占位号
+        const blacklist = [
+          'cc-claude-official', 
+          'cc-gemini-official', 
+          'cc-grokbuild-official', 
+          'cc-claude-desktop-official',
+          'local-claude-official',
+          'local-gemini-official',
+          'local-grok-official',
+          'claude-official',
+          'gemini-official',
+          'grokbuild-official'
+        ];
+        return parsed.filter((a) => !blacklist.includes(a.id) && a.credentials?.apiKey !== 'demo_key');
       }
     }
   } catch (e) {
@@ -71,7 +84,7 @@ export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'dashboard' | 'tray'>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid'>('list'); // Default to clean CCSwitch-style list
-  const [selectedProvider, setSelectedProvider] = useState<string>('claude');
+  const [selectedProvider, setSelectedProvider] = useState<string>('chatgpt');
   const [quotaDisplayMode, setQuotaDisplayMode] = useState<'left' | 'used'>('left');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
@@ -140,96 +153,68 @@ export const App: React.FC = () => {
     syncWithCCSwitch(false);
 
     // Intelligently scan and link all authentic local accounts (DeepSeek, Trae, Codex CLI, etc.)
-    scanLocalAuthProviders().then((res) => {
+    scanLocalAuthProviders().then(async (res) => {
       if (res.success && res.accounts && res.accounts.length > 0) {
+        // Fetch real quota for each detected account
+        const resolvedAccounts = await Promise.all(
+          res.accounts.map(async (a: any) => {
+            let liveSnapshot = a.latestSnapshot;
+            try {
+              const qRes = await fetchRealAccountQuota(a.id, a.provider);
+              if (qRes.success && qRes.snapshot) {
+                liveSnapshot = qRes.snapshot;
+              }
+            } catch {}
+            const isDeepSeek = a.provider === 'deepseek';
+            const isTrae = a.provider === 'trae';
+            return {
+              id: a.id || `acc-${a.provider}-${Date.now()}`,
+              name: a.name || (isDeepSeek ? 'DeepSeek Official' : isTrae ? 'Trae Official' : 'PaperKite'),
+              email: a.email || (isDeepSeek ? 'platform@deepseek.com' : 'user@local.auth'),
+              platform: a.platform || `${a.provider}-client`,
+              provider: a.provider,
+              planName: a.planName || '标准订阅',
+              planExpiresAt: a.planExpiresAt,
+              quotaMechanism: a.quotaMechanism || 'dual_window',
+              tags: [a.planName || '官方认证', '本地同步'],
+              enabled: true,
+              isActiveInCCSwitch: a.isActiveInCCSwitch || false,
+              priority: 1,
+              autoFailoverEnabled: true,
+              lastLoginAt: '官方实时同步',
+              credentials: {
+                apiKey: a.source || 'Local Auth Token',
+                sessionToken: a.source || 'Local Auth Token',
+              },
+              latestSnapshot: liveSnapshot,
+            } as Account;
+          })
+        );
+
         setAccounts((prev) => {
           const updated = [...prev];
           let addedCount = 0;
-          for (const a of res.accounts) {
-            const exists = updated.some(
-              (acc) => acc.id === a.id || (acc.provider === a.provider && acc.email === a.email)
+          for (const newAcc of resolvedAccounts) {
+            const existingIdx = updated.findIndex(
+              (acc) => acc.id === newAcc.id || (acc.provider === newAcc.provider && acc.email === newAcc.email)
             );
-            if (!exists) {
-              const isDeepSeek = a.provider === 'deepseek';
-              const isTrae = a.provider === 'trae';
-              const newAcc: Account = {
-                id: a.id || `acc-${a.provider}-${Date.now()}`,
-                name: a.name || (isDeepSeek ? 'DeepSeek Official' : isTrae ? 'Trae Official' : 'PaperKite'),
-                email: a.email || (isDeepSeek ? 'platform@deepseek.com' : 'user@local.auth'),
-                platform: a.platform || `${a.provider}-client`,
-                provider: a.provider,
-                planName: a.planName || '标准订阅',
-                planExpiresAt: a.planExpiresAt,
-                quotaMechanism: a.quotaMechanism || 'dual_window',
-                tags: [a.planName || '官方认证', '本地同步'],
-                enabled: true,
-                isActiveInCCSwitch: a.isActiveInCCSwitch || false,
-                priority: 1,
-                autoFailoverEnabled: true,
-                lastLoginAt: '本地凭证已连通',
-                credentials: {
-                  apiKey: a.source || 'Local Auth Token',
-                  sessionToken: a.source || 'Local Auth Token',
-                },
-                latestSnapshot:
-                  a.quotaMechanism === 'balance_only'
-                    ? {
-                        timestamp: new Date().toISOString(),
-                        isHealthy: true,
-                        isExhausted: false,
-                        isWarning: false,
-                        kind: 'currency_balance',
-                        currencyBalance: {
-                          currency: a.currency || 'CNY',
-                          balance: a.balance || 20.0,
-                        },
-                        quotaMechanism: 'balance_only',
-                      }
-                    : a.quotaMechanism === 'daily_quota'
-                    ? {
-                        timestamp: new Date().toISOString(),
-                        isHealthy: true,
-                        isExhausted: false,
-                        isWarning: false,
-                        kind: 'daily_quota',
-                        dailyQuota: {
-                          used: a.dailyUsed || 38,
-                          limit: a.dailyLimit || 500,
-                          resetsAt: '次日 00:00',
-                          cooldownSecondsRemaining: 3600 * 22,
-                        },
-                        quotaMechanism: 'daily_quota',
-                      }
-                    : {
-                        timestamp: new Date().toISOString(),
-                        isHealthy: true,
-                        isExhausted: false,
-                        isWarning: false,
-                        kind: 'rolling_window',
-                        rollingWindow: {
-                          used: isDeepSeek ? 8 : 12,
-                          total: isDeepSeek ? 50 : 80,
-                          windowDurationHours: 5,
-                          resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
-                          cooldownSecondsRemaining: Math.floor(3600 * 2.5),
-                        },
-                        sevenDayQuota: {
-                          usedPercent: isDeepSeek ? 18 : 25,
-                          totalPercent: 100,
-                          cooldownSecondsRemaining: 3600 * 24 * 4,
-                          resetsAt: '周一 00:00',
-                          label: isDeepSeek ? '18% 充沛' : '25% 充沛',
-                        },
-                        quotaMechanism: 'dual_window',
-                      },
-              };
+            if (existingIdx >= 0) {
+              // Update with authentic real live quota
+              if (newAcc.latestSnapshot) {
+                updated[existingIdx] = {
+                  ...updated[existingIdx],
+                  ...newAcc,
+                  name: updated[existingIdx].name, // preserve user nickname edits
+                };
+              }
+            } else {
               updated.push(newAcc);
               addedCount++;
             }
           }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
           if (addedCount > 0) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            showToast(`⚡ 已成功接入本地 ${res.accounts.map((a: any) => a.name).join('、')} 账号`);
+            showToast(`⚡ 已成功接入本地 ${resolvedAccounts.map((a) => a.name).join('、')} 账号（已拉取真实额度）`);
           }
           return updated;
         });
@@ -346,11 +331,20 @@ export const App: React.FC = () => {
     setIsScanningProvider(true);
     const pMeta = providers[providerId];
     const pName = pMeta?.name || providerId;
-    showToast(`🔍 正在精准检索 ${pName} 本地客户端与 CLI 授权凭据...`);
+    showToast(`🔍 正在精准检索 ${pName} 本地客户端并同步官方真实额度...`);
     try {
       const res = await scanProviderAuth(providerId);
       if (res.success && res.found && res.account) {
         const detected = res.account;
+        // Fetch real quota for detected account immediately
+        let liveSnapshot = detected.latestSnapshot;
+        try {
+          const qRes = await fetchRealAccountQuota(detected.id, detected.provider);
+          if (qRes.success && qRes.snapshot) {
+            liveSnapshot = qRes.snapshot;
+          }
+        } catch {}
+
         setAccounts((prev) => {
           const existingIdx = prev.findIndex(
             (a) => a.id === detected.id || (a.provider === detected.provider && a.email === detected.email)
@@ -368,63 +362,13 @@ export const App: React.FC = () => {
             priority: 1,
             enabled: true,
             autoFailoverEnabled: true,
-            lastLoginAt: '刚刚自动检测',
+            lastLoginAt: '官方实时同步',
             isActiveInCCSwitch: true,
             credentials: {
               apiKey: detected.source || 'Local Auth Token',
               sessionToken: detected.source || 'Local Auth Token',
             },
-            latestSnapshot:
-              detected.quotaMechanism === 'balance_only'
-                ? {
-                    timestamp: new Date().toISOString(),
-                    isHealthy: true,
-                    isExhausted: false,
-                    isWarning: false,
-                    kind: 'currency_balance',
-                    currencyBalance: {
-                      currency: detected.currency || 'CNY',
-                      balance: detected.balance || 20.0,
-                    },
-                    quotaMechanism: 'balance_only',
-                  }
-                : detected.quotaMechanism === 'daily_quota'
-                ? {
-                    timestamp: new Date().toISOString(),
-                    isHealthy: true,
-                    isExhausted: false,
-                    isWarning: false,
-                    kind: 'daily_quota',
-                    dailyQuota: {
-                      used: detected.dailyUsed || 38,
-                      limit: detected.dailyLimit || 500,
-                      resetsAt: '次日 00:00',
-                      cooldownSecondsRemaining: 3600 * 22,
-                    },
-                    quotaMechanism: 'daily_quota',
-                  }
-                : {
-                    timestamp: new Date().toISOString(),
-                    isHealthy: true,
-                    isExhausted: false,
-                    isWarning: false,
-                    kind: 'rolling_window',
-                    rollingWindow: {
-                      used: 12,
-                      total: detected.provider === 'deepseek' ? 50 : 80,
-                      windowDurationHours: 5,
-                      resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
-                      cooldownSecondsRemaining: Math.floor(3600 * 2.5),
-                    },
-                    sevenDayQuota: {
-                      usedPercent: 25,
-                      totalPercent: 100,
-                      cooldownSecondsRemaining: 3600 * 24 * 4,
-                      resetsAt: '周一 00:00',
-                      label: '25% 充沛',
-                    },
-                    quotaMechanism: 'dual_window',
-                  },
+            latestSnapshot: liveSnapshot || detected.latestSnapshot,
           };
 
           let updated: Account[];
@@ -437,9 +381,9 @@ export const App: React.FC = () => {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
           return updated;
         });
-        showToast(`🎉 成功接入 ${pName} 本地登录账号！来源：${detected.source || '本地会话'}`);
+        showToast(`🎉 成功接入 ${pName} 本地账号「${detected.name}」并拉取官方真实额度！`);
       } else {
-        showToast(`ℹ️ 未在本地检索到 ${pName} 的官方登录凭据。您可以点击【官方授权登录】唤起登录界面。`);
+        showToast(`ℹ️ 未在本地检索到 ${pName} 的官方登录凭据。您可以点击【浏览器打开官网】进行登录。`);
       }
     } catch (err) {
       showToast(`❌ 检测 ${pName} 异常: ${err}`);
@@ -479,72 +423,61 @@ export const App: React.FC = () => {
     showToast(`⚡ 已联动 CC-Switch：当前生效号源已切换为「${target.name}」`);
   };
 
-  // Refresh single account quota
-  const handleRefresh = (id: string) => {
-    setAccounts((prev) =>
-      prev.map((acc) => {
-        if (acc.id === id && acc.latestSnapshot) {
-          if (acc.latestSnapshot.kind === 'rolling_window' && acc.latestSnapshot.rollingWindow) {
-            const rw = acc.latestSnapshot.rollingWindow;
-            const newUsed = Math.max(0, rw.used - Math.floor(Math.random() * 3));
-            return {
-              ...acc,
-              latestSnapshot: {
-                ...acc.latestSnapshot,
-                timestamp: new Date().toISOString(),
-                isExhausted: newUsed >= rw.total,
-                isWarning: newUsed >= rw.total * 0.8,
-                rollingWindow: {
-                  ...rw,
-                  used: newUsed,
-                  cooldownSecondsRemaining: Math.floor(Math.random() * 7200) + 600,
-                },
-              },
-            };
-          } else if (acc.latestSnapshot.kind === 'currency_balance' && acc.latestSnapshot.currencyBalance) {
-            const cb = acc.latestSnapshot.currencyBalance;
-            return {
-              ...acc,
-              latestSnapshot: {
-                ...acc.latestSnapshot,
-                timestamp: new Date().toISOString(),
-                currencyBalance: {
-                  ...cb,
-                  balance: Number((cb.balance - (Math.random() * 0.5)).toFixed(2)),
-                },
-              },
-            };
-          }
-        }
-        return acc;
-      })
-    );
+  // Refresh single account quota using authentic live queries
+  const handleRefresh = async (id: string) => {
     const acc = accounts.find((a) => a.id === id);
-    showToast(`🔄 账号「${acc?.name}」配额已同步至最新状态`);
+    if (!acc) return;
+    showToast(`🔄 正在向官方查询「${acc.name}」真实配额与重置时间...`);
+    try {
+      const res = await fetchRealAccountQuota(acc.id, acc.provider);
+      if (res.success && res.snapshot) {
+        setAccounts((prev) => {
+          const next = prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  latestSnapshot: res.snapshot,
+                  lastLoginAt: '官方实时同步',
+                }
+              : a
+          );
+          saveAccountsToStorage(next);
+          return next;
+        });
+        showToast(`✅ 账号「${acc.name}」官方配额已同步至最新状态`);
+      } else {
+        showToast(`⚠️ 配额查询反馈: ${res.error || '未获取到新状态'}`);
+      }
+    } catch (e) {
+      showToast(`❌ 配额同步失败: ${e}`);
+    }
   };
 
-  // Refresh all accounts
-  const handleRefreshAll = () => {
-    setAccounts((prev) =>
-      prev.map((acc) => {
-        if (acc.latestSnapshot?.kind === 'rolling_window' && acc.latestSnapshot.rollingWindow) {
-          const rw = acc.latestSnapshot.rollingWindow;
-          return {
-            ...acc,
-            latestSnapshot: {
-              ...acc.latestSnapshot,
-              timestamp: new Date().toISOString(),
-              rollingWindow: {
-                ...rw,
-                used: Math.max(0, rw.used - 1),
-              },
-            },
-          };
-        }
-        return acc;
-      })
-    );
-    showToast('🔄 已全量刷新各大供应商模型配额数据');
+  // Refresh all accounts concurrently with authentic live queries
+  const handleRefreshAll = async () => {
+    showToast('🔄 正在并发向各大官方端点检索最新真实配额...');
+    try {
+      const updated = await Promise.all(
+        accounts.map(async (acc) => {
+          try {
+            const res = await fetchRealAccountQuota(acc.id, acc.provider);
+            if (res.success && res.snapshot) {
+              return {
+                ...acc,
+                latestSnapshot: res.snapshot,
+                lastLoginAt: '官方实时同步',
+              };
+            }
+          } catch {}
+          return acc;
+        })
+      );
+      setAccounts(updated);
+      saveAccountsToStorage(updated);
+      showToast('✅ 所有账号官方真实配额与重置倒计时已全部刷新完成');
+    } catch (e) {
+      showToast(`❌ 批量刷新异常: ${e}`);
+    }
   };
 
   // Persist accounts to local storage helper

@@ -110,6 +110,24 @@ export const scanProviderAuth = async (
   }
 };
 
+export const fetchRealAccountQuota = async (
+  accountId: string,
+  provider: string
+): Promise<{ success: boolean; snapshot?: any; error?: string }> => {
+  if (!isTauriEnvironment()) {
+    return { success: false, error: '非桌面环境' };
+  }
+  try {
+    return await invoke<{ success: boolean; snapshot?: any; error?: string }>(
+      'fetch_real_account_quota',
+      { accountId, provider }
+    );
+  } catch (err) {
+    console.warn('Failed to fetch_real_account_quota:', err);
+    return { success: false, error: String(err) };
+  }
+};
+
 export const openProviderLogin = async (
   providerId: string
 ): Promise<{ success: boolean; url?: string; message?: string }> => {
