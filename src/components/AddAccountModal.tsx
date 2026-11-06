@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import { X, Key, Shield, PlusCircle } from 'lucide-react';
-import { Account, PlatformId } from '../types';
+import { Account, PlatformId, ProviderId } from '../types';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (account: Partial<Account>) => void;
+  initialProvider?: string;
 }
 
-export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd }) => {
+export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd, initialProvider }) => {
   const [name, setName] = useState('');
-  const [platform, setPlatform] = useState<PlatformId>('deepseek');
+  const [platform, setPlatform] = useState<PlatformId>(
+    initialProvider === 'anthropic' ? 'claude-web' :
+    initialProvider === 'openai' ? 'chatgpt-web' :
+    initialProvider === 'siliconflow' ? 'siliconflow' :
+    initialProvider === 'gemini' ? 'gemini' :
+    initialProvider === 'openrouter' ? 'openrouter' : 'deepseek'
+  );
   const [credential, setCredential] = useState('');
   const [tags, setTags] = useState('个人号, 开发测试');
   const [priority, setPriority] = useState(2);
@@ -21,9 +28,23 @@ export const AddAccountModal: React.FC<Props> = ({ isOpen, onClose, onAdd }) => 
     e.preventDefault();
     if (!name.trim()) return;
 
+    const platformToProvider: Record<PlatformId, { provider: ProviderId; models: string[] }> = {
+      'claude-web': { provider: 'anthropic', models: ['Claude 3.7 Sonnet', 'Claude 3.5 Haiku'] },
+      'chatgpt-web': { provider: 'openai', models: ['GPT-4o', 'o3-mini'] },
+      'deepseek': { provider: 'deepseek', models: ['DeepSeek-R1', 'DeepSeek-V3'] },
+      'siliconflow': { provider: 'siliconflow', models: ['DeepSeek-R1 (云托管)', 'Qwen-2.5-72B'] },
+      'gemini': { provider: 'google', models: ['Gemini 2.5 Flash', 'Gemini 2.5 Pro'] },
+      'openrouter': { provider: 'openrouter', models: ['Claude 3.7', 'Llama 3.3 70B'] },
+      'custom-api': { provider: 'custom', models: ['Custom LLM'] },
+    };
+
+    const info = platformToProvider[platform] || { provider: 'custom', models: ['通用大模型'] };
+
     onAdd({
       name,
       platform,
+      provider: info.provider,
+      models: info.models,
       tags: tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean),
       priority,
       enabled: true,

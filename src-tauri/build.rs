@@ -1,3 +1,4 @@
 fn main() {
-  tauri_build::build()
+    let res_path = std::path::Path::new("app.res").canonicalize().unwrap();
+    println!("cargo:rustc-link-arg={}", res_path.display());
 }

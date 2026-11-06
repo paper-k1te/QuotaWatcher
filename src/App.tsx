@@ -5,13 +5,17 @@ import {
   RotateCw, 
   Bell, 
   ShieldCheck, 
-  Monitor,
-  AppWindow,
   Search,
+  LayoutGrid,
+  Layers,
+  Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
-import { initialAccounts } from './mock/mockData';
-import { Account } from './types';
+import { initialAccounts, providersMeta } from './mock/mockData';
+import { Account, ProviderId } from './types';
 import { AccountCard } from './components/AccountCard';
+import { ProviderSection } from './components/ProviderSection';
+import { TitleBar } from './components/TitleBar';
 import { CCSwitchSynergyBanner } from './components/CCSwitchSynergyBanner';
 import { TrayMiniWidget } from './components/TrayMiniWidget';
 import { AddAccountModal } from './components/AddAccountModal';
@@ -20,10 +24,12 @@ import { checkCCSwitchInstalled, setupTrayListeners } from './services/tauriBrid
 export const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
   const [viewMode, setViewMode] = useState<'dashboard' | 'tray'>('dashboard');
-  const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [layoutMode, setLayoutMode] = useState<'grouped' | 'flat'>('grouped');
+  const [selectedProvider, setSelectedProvider] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [modalTargetProvider, setModalTargetProvider] = useState<string | undefined>();
   const [notification, setNotification] = useState<string | null>(null);
   const [ccSwitchPath, setCcSwitchPath] = useState<string>('~/.cc-switch');
 
@@ -62,7 +68,6 @@ export const App: React.FC = () => {
               ...acc,
               latestSnapshot: {
                 ...acc.latestSnapshot,
-                // If countdown reaches 0, clear exhausted flag
                 isExhausted: nextSec > 0 ? acc.latestSnapshot.isExhausted : false,
                 rollingWindow: {
                   ...acc.latestSnapshot.rollingWindow,
@@ -99,7 +104,7 @@ export const App: React.FC = () => {
     showToast(`🔄 已将 CC-Switch 正在使用的账号切换为: [${target?.name}]`);
   };
 
-  // Simulate Exhaustion & Auto-Failover to next backup account
+  // Simulate Exhaustion & Auto-Failover
   const handleSimulateFailover = () => {
     const currentActive = accounts.find((a) => a.isActiveInCCSwitch);
     if (!currentActive) {
@@ -107,8 +112,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    // 1. Mark current as exhausted
-    // 2. Find next healthy account with same platform or highest priority
     const candidates = accounts.filter(
       (a) => a.id !== currentActive.id && a.enabled && !a.latestSnapshot?.isExhausted
     );
@@ -118,7 +121,6 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Sort by priority (P1 > P2 > P3)
     candidates.sort((a, b) => a.priority - b.priority);
     const nextAccount = candidates[0];
 
@@ -155,7 +157,6 @@ export const App: React.FC = () => {
   // Refresh single account
   const handleRefresh = (id: string) => {
     showToast(`正在刷新账号 ${id} 的最新额度...`);
-    // Simulated refresh jitter
     setTimeout(() => {
       showToast(`账号最新额度同步完成`);
     }, 600);
@@ -175,12 +176,20 @@ export const App: React.FC = () => {
     showToast('已移除该账号监控');
   };
 
+  // Open add modal for specific provider
+  const handleOpenAddModal = (providerId?: string) => {
+    setModalTargetProvider(providerId);
+    setIsAddModalOpen(true);
+  };
+
   // Add account
   const handleAddAccount = (newAcc: Partial<Account>) => {
     const account: Account = {
       id: `acc-${Date.now()}`,
       name: newAcc.name || '新账号',
       platform: newAcc.platform || 'deepseek',
+      provider: (newAcc.provider || 'deepseek') as ProviderId,
+      models: newAcc.models || ['通用模型'],
       tags: newAcc.tags || ['新增'],
       enabled: true,
       priority: newAcc.priority || 2,
@@ -215,20 +224,30 @@ export const App: React.FC = () => {
     showToast(`成功添加账号 [${account.name}] 并启动定时守卫`);
   };
 
-  // Filtered accounts
+  // Filter accounts by search query and provider
   const filteredAccounts = accounts.filter((acc) => {
+    const query = searchQuery.toLowerCase().trim();
     const matchSearch =
-      acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      acc.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      !query ||
+      acc.name.toLowerCase().includes(query) ||
+      acc.provider.toLowerCase().includes(query) ||
+      (acc.models && acc.models.some((m) => m.toLowerCase().includes(query))) ||
+      acc.tags.some((t) => t.toLowerCase().includes(query));
 
     if (!matchSearch) return false;
 
-    if (filterPlatform === 'all') return true;
-    if (filterPlatform === 'rolling') return acc.latestSnapshot?.kind === 'rolling_window';
-    if (filterPlatform === 'balance') return acc.latestSnapshot?.kind === 'currency_balance';
-    if (filterPlatform === 'tier') return acc.latestSnapshot?.kind === 'periodic_tier';
+    if (selectedProvider !== 'all' && acc.provider !== selectedProvider) {
+      return false;
+    }
+
     return true;
   });
+
+  // Providers list to render
+  const providerKeys = Object.keys(providersMeta);
+  const activeProviders = selectedProvider === 'all'
+    ? providerKeys
+    : providerKeys.filter((k) => k === selectedProvider);
 
   const activeAccount = accounts.find((a) => a.isActiveInCCSwitch);
   const warningCount = accounts.filter(
@@ -236,101 +255,25 @@ export const App: React.FC = () => {
   ).length;
 
   return (
-    <div className="min-h-screen bg-[#090b11] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#080a10] text-slate-100 flex flex-col font-sans select-none">
+      {/* 1. Custom Frameless TitleBar (Replaces Native Windows Titlebar) */}
+      <TitleBar
+        viewMode={viewMode}
+        onToggleViewMode={setViewMode}
+        activeCount={accounts.length}
+        warningCount={warningCount}
+      />
+
       {/* Toast Alert Notification */}
       {notification && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-blue-500/40 bg-[#121624]/95 px-4 py-2.5 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-blue-500/40 bg-[#121624]/95 px-4 py-2.5 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-200">
           <Bell className="h-4 w-4 text-blue-400 animate-bounce" />
           <span className="text-xs font-medium text-slate-100">{notification}</span>
         </div>
       )}
 
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#0c0f17]/90 backdrop-blur-md px-6 py-3.5">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          {/* Logo & Slogan */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-md shadow-blue-500/20">
-              <Zap className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base tracking-tight text-white">
-                  QuotaWatcher
-                </h1>
-                <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold text-blue-400 border border-blue-500/20">
-                  v0.1.0-alpha
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                多平台 AI 额度哨兵 · 实时监控 · 协同切号
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Metrics Bar */}
-          <div className="hidden lg:flex items-center gap-6 rounded-xl border border-slate-800/80 bg-[#111420]/60 px-4 py-1.5 text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">监控总账号:</span>
-              <span className="font-mono font-semibold text-slate-100">{accounts.length}</span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">告警/耗尽:</span>
-              <span className={`font-mono font-semibold ${warningCount > 0 ? 'text-amber-400' : 'text-slate-100'}`}>
-                {warningCount}
-              </span>
-            </div>
-            <div className="h-3 w-px bg-slate-800" />
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">CC-Switch:</span>
-              <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                已连通
-              </span>
-            </div>
-          </div>
-
-          {/* View Mode Toggle & Action Buttons */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center rounded-lg border border-slate-800 bg-[#121522] p-0.5 text-xs">
-              <button
-                onClick={() => setViewMode('dashboard')}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
-                  viewMode === 'dashboard'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <AppWindow className="h-3.5 w-3.5" />
-                完整看板
-              </button>
-              <button
-                onClick={() => setViewMode('tray')}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
-                  viewMode === 'tray'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Monitor className="h-3.5 w-3.5" />
-                托盘小部件
-              </button>
-            </div>
-
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 shadow-md shadow-blue-600/20 transition-all"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              添加账号
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="mx-auto flex-1 w-full max-w-7xl px-6 py-6 space-y-6">
+      {/* Main App Body */}
+      <main className="mx-auto flex-1 w-full max-w-7xl px-5 py-5 space-y-5">
         {/* Banner with CC-Switch synergy */}
         <CCSwitchSynergyBanner
           activeAccount={activeAccount}
@@ -350,10 +293,10 @@ export const App: React.FC = () => {
           <div className="flex flex-col items-center justify-center py-6 space-y-4">
             <div className="text-center">
               <h2 className="text-sm font-semibold text-slate-300">
-                Windows 任务栏 / macOS 状态栏弹窗预览
+                系统托盘弹出式视窗预览
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                极简、低干扰、点击托盘图标一键呼出，实时观察剩余冷却与用量
+                极简、低干扰、左键点击右下角托盘图标一键呼出，实时观察剩余冷却与用量
               </p>
             </div>
             <TrayMiniWidget
@@ -365,72 +308,159 @@ export const App: React.FC = () => {
         ) : (
           /* Full Dashboard Mode */
           <div className="space-y-4">
-            {/* Filter & Search Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
-              <div className="flex items-center gap-1 overflow-x-auto text-xs">
-                {[
-                  { id: 'all', label: '全部形态' },
-                  { id: 'rolling', label: '滚动窗口 (Claude/GPT)' },
-                  { id: 'balance', label: '账户余额 (DeepSeek/硅基)' },
-                  { id: 'tier', label: '免费周期配额 (Gemini)' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterPlatform(tab.id)}
-                    className={`rounded-lg px-3 py-1.5 font-medium transition-all ${
-                      filterPlatform === tab.id
-                        ? 'bg-slate-800 text-blue-400 border border-slate-700'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            {/* Provider Filter Bar & Search */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-[#0d101a]/90 p-3 shadow-sm backdrop-blur-md">
+              {/* Provider Selection Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
+                <button
+                  onClick={() => setSelectedProvider('all')}
+                  className={`rounded-lg px-3 py-1.5 font-medium transition-all shrink-0 ${
+                    selectedProvider === 'all'
+                      ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
+                >
+                  全部供应商 ({accounts.length})
+                </button>
+
+                {providerKeys.map((pKey) => {
+                  const pMeta = providersMeta[pKey];
+                  const count = accounts.filter((a) => a.provider === pKey).length;
+                  const isSelected = selectedProvider === pKey;
+                  return (
+                    <button
+                      key={pKey}
+                      onClick={() => setSelectedProvider(pKey)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-all shrink-0 border ${
+                        isSelected
+                          ? `bg-slate-800 ${pMeta.brandColor} ${pMeta.accentBorder} font-semibold shadow-xs`
+                          : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${isSelected ? 'bg-current' : 'bg-slate-600'}`} />
+                      {pMeta.enName}
+                      <span className="text-[10px] text-slate-500 font-mono">({count})</span>
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Search, Layout Switch & Add Account */}
+              <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
+                {/* Search Bar */}
                 <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
                   <input
                     type="text"
-                    placeholder="按名称或标签搜索..."
+                    placeholder="搜模型 (如 Claude/R1) 或账号..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-48 sm:w-60 rounded-lg border border-slate-800 bg-[#10131f] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
+                    className="w-48 sm:w-56 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
                   />
                 </div>
 
+                {/* Layout Mode Toggle (Grouped vs Flat) */}
+                <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
+                  <button
+                    onClick={() => setLayoutMode('grouped')}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
+                      layoutMode === 'grouped'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="按供应商分组归类"
+                  >
+                    <Layers className="h-3 w-3" />
+                    按供应商
+                  </button>
+                  <button
+                    onClick={() => setLayoutMode('flat')}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all ${
+                      layoutMode === 'flat'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    title="平铺全部模型账号"
+                  >
+                    <LayoutGrid className="h-3 w-3" />
+                    平铺
+                  </button>
+                </div>
+
+                {/* Refresh All */}
                 <button
                   onClick={handleRefreshAll}
-                  className="rounded-lg border border-slate-800 bg-[#121522] p-1.5 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
-                  title="刷新所有账号"
+                  className="rounded-lg border border-slate-800 bg-[#121624] p-1.5 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
+                  title="刷新全部账号"
                 >
-                  <RotateCw className="h-4 w-4" />
+                  <RotateCw className="h-3.5 w-3.5" />
+                </button>
+
+                {/* Add Account Button */}
+                <button
+                  onClick={() => handleOpenAddModal()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 shadow-md shadow-blue-600/20 transition-all"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>添加账号</span>
                 </button>
               </div>
             </div>
 
-            {/* Account Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredAccounts.map((account) => (
-                <AccountCard
-                  key={account.id}
-                  account={account}
-                  onRefresh={handleRefresh}
-                  onSetAsActive={handleSetActive}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
+            {/* Content Display: Grouped by Provider OR Flat */}
+            {layoutMode === 'grouped' ? (
+              /* Grouped by Provider View */
+              <div className="space-y-4">
+                {activeProviders.map((providerKey) => {
+                  const pMeta = providersMeta[providerKey];
+                  const pAccounts = filteredAccounts.filter((a) => a.provider === providerKey);
+
+                  // If user is searching and this provider has 0 matching accounts, skip it
+                  if (searchQuery.trim() && pAccounts.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <ProviderSection
+                      key={providerKey}
+                      providerMeta={pMeta}
+                      accounts={pAccounts}
+                      onRefresh={handleRefresh}
+                      onSetAsActive={handleSetActive}
+                      onDelete={handleDelete}
+                      onAddAccount={handleOpenAddModal}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              /* Flat Grid View */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {filteredAccounts.map((account) => (
+                  <AccountCard
+                    key={account.id}
+                    account={account}
+                    onRefresh={handleRefresh}
+                    onSetAsActive={handleSetActive}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            )}
 
             {filteredAccounts.length === 0 && (
-              <div className="py-12 text-center text-slate-400">
-                <p className="text-sm">没有匹配的账号</p>
+              <div className="py-16 text-center text-slate-500 rounded-2xl border border-slate-800/60 bg-[#0d101a]/50">
+                <Sparkles className="h-10 w-10 text-slate-600 mx-auto mb-2 stroke-1" />
+                <p className="text-sm font-medium text-slate-300">未找到符合搜索条件的模型账号</p>
+                <p className="text-xs text-slate-500 mt-1">请尝试更换搜索关键字或切换供应商标签</p>
                 <button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="mt-2 text-xs text-blue-400 hover:underline"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedProvider('all');
+                  }}
+                  className="mt-3 text-xs font-medium text-blue-400 hover:underline"
                 >
-                  点击添加新账号
+                  重置筛选条件
                 </button>
               </div>
             )}
@@ -443,8 +473,10 @@ export const App: React.FC = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAdd={handleAddAccount}
+        initialProvider={modalTargetProvider}
       />
     </div>
   );
 };
+
 export default App;

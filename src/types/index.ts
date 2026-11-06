@@ -7,6 +7,29 @@ export type PlatformId =
   | 'openrouter'
   | 'custom-api';
 
+export type ProviderId = 
+  | 'anthropic' 
+  | 'deepseek' 
+  | 'openai' 
+  | 'siliconflow' 
+  | 'gemini' 
+  | 'openrouter' 
+  | 'custom';
+
+export interface ProviderMeta {
+  id: ProviderId;
+  name: string;
+  enName: string;
+  badge: string;
+  brandColor: string;
+  brandBg: string;
+  accentBorder: string;
+  accentGradient: string;
+  supportedModels: string[];
+  description: string;
+  quotaTypeLabel: string;
+}
+
 export type QuotaKind = 'rolling_window' | 'currency_balance' | 'periodic_tier';
 
 export interface RollingWindowData {
@@ -48,6 +71,8 @@ export interface Account {
   id: string;
   name: string;
   platform: PlatformId;
+  provider: ProviderId; // 供应商归属
+  models: string[]; // 常用/对应支持的模型名称
   tags: string[];
   enabled: boolean;
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用

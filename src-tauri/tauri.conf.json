@@ -4,23 +4,24 @@
   "version": "0.1.0",
   "identifier": "com.quotawatcher.desktop",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "QuotaWatcher - 全平台多账号额度管家",
+        "url": "index.html",
         "width": 1120,
         "height": 760,
         "minWidth": 860,
         "minHeight": 580,
         "center": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": true,
+        "focus": true,
+        "decorations": false
       }
     ],
     "security": {

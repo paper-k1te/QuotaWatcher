@@ -113,6 +113,16 @@ export const AccountCard: React.FC<Props> = ({
           </span>
         </div>
 
+        {/* Associated Models */}
+        {account.models && account.models.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 rounded bg-slate-900/60 px-2 py-1 text-[10px] border border-slate-800/60">
+            <span className="text-slate-500 shrink-0 font-medium">挂载模型:</span>
+            <span className="truncate font-mono text-slate-300">
+              {account.models.join(' · ')}
+            </span>
+          </div>
+        )}
+
         {/* Content Body based on Quota Type */}
         <div className="my-4 rounded-lg bg-[#0c0e17] p-3 border border-slate-800/60">
           {isRolling && latestSnapshot.rollingWindow && (

@@ -41,3 +41,39 @@ export const setupTrayListeners = async (onRefreshAll: () => void): Promise<Unli
     return null;
   }
 };
+
+export const minimizeWindow = async (): Promise<void> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] Window minimize');
+    return;
+  }
+  try {
+    await invoke('window_minimize');
+  } catch (err) {
+    console.warn('Failed to minimize window:', err);
+  }
+};
+
+export const toggleMaximizeWindow = async (): Promise<void> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] Window toggle maximize');
+    return;
+  }
+  try {
+    await invoke('window_toggle_maximize');
+  } catch (err) {
+    console.warn('Failed to toggle maximize window:', err);
+  }
+};
+
+export const closeWindow = async (): Promise<void> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] Window close to tray');
+    return;
+  }
+  try {
+    await invoke('window_close');
+  } catch (err) {
+    console.warn('Failed to close window:', err);
+  }
+};
