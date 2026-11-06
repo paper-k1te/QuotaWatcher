@@ -75,8 +75,9 @@ export interface SecondaryTierData {
 export interface SevenDayQuotaData {
   usedPercent: number; // 0 - 100
   totalPercent?: number; // 100
-  resetsAt?: string; // 7天重置时间
-  label?: string; // 额度描述 (如 "24% 充沛")
+  resetsAt?: string; // 7天重置时间描述 (如 "周一 00:00")
+  cooldownSecondsRemaining?: number; // 7天重置倒计时（秒）
+  label?: string; // 额度描述 (如 "25% 充沛")
 }
 
 export interface QuotaSnapshot {

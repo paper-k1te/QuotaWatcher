@@ -32,14 +32,17 @@ import {
   closeWindow 
 } from './services/tauriBridge';
 
-const STORAGE_KEY = 'quotawatcher_accounts_v3';
+const STORAGE_KEY = 'quotawatcher_accounts_v4';
 
 const loadStoredAccounts = (): Account[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // 彻底过滤历史遗留未配置的假号
+        return parsed.filter((a) => !['cc-claude-official', 'cc-gemini-official', 'cc-grokbuild-official', 'cc-claude-desktop-official'].includes(a.id));
+      }
     }
   } catch (e) {
     console.warn('Failed to load accounts from storage:', e);
@@ -93,78 +96,20 @@ export const App: React.FC = () => {
           setTodayUsage(res.usage);
         }
 
-        // Merge or update existing accounts with real CC-Switch isCurrent status
+        // Update existing accounts with real CC-Switch isCurrent status (NEVER create empty dummy accounts)
         setAccounts((prev) => {
-          const updated = [...prev];
-          
-          res.providers?.forEach((p) => {
-            // Find existing matching account
-            let acc = updated.find((a) => a.ccSwitchProviderId === p.id || a.name.toLowerCase().includes(p.name.toLowerCase()));
-            
-            if (acc) {
-              acc.isActiveInCCSwitch = p.isCurrent;
-              acc.ccSwitchProviderId = p.id;
-              acc.appType = p.appType;
-            } else {
-              // Create new account entry from CC-Switch provider
-              const isOfficial = p.category === 'official';
-              const targetProvider = p.appType === 'claude' ? 'claude' : p.appType === 'codex' ? 'chatgpt' : p.appType === 'gemini' ? 'antigravity' : 'bossclaw';
-              
-              const newEntry: Account = {
-                id: `cc-${p.id}`,
-                name: p.name,
-                email: `${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@workspace.com`,
-                platform: isOfficial ? 'claude-web' : 'custom-api',
-                provider: targetProvider,
-                tags: [p.appType],
-                enabled: true,
-                isActiveInCCSwitch: p.isCurrent,
-                priority: p.isCurrent ? 1 : 2,
-                autoFailoverEnabled: true,
-                appType: p.appType,
-                ccSwitchProviderId: p.id,
-                endpoint: p.apiUrl,
-                lastLoginAt: '2026-11-06 23:20',
-                latestSnapshot: isOfficial ? {
-                  timestamp: new Date().toISOString(),
-                  isHealthy: true,
-                  isExhausted: false,
-                  isWarning: false,
-                  kind: 'rolling_window',
-                  rollingWindow: {
-                    used: 12,
-                    total: 45,
-                    windowDurationHours: 5,
-                    resetsAt: new Date(Date.now() + 3600 * 1000).toISOString(),
-                    cooldownSecondsRemaining: 3600,
-                  },
-                  sevenDayQuota: {
-                    usedPercent: 26,
-                    totalPercent: 100,
-                    label: '26% 充沛',
-                  },
-                } : {
-                  timestamp: new Date().toISOString(),
-                  isHealthy: true,
-                  isExhausted: false,
-                  isWarning: false,
-                  kind: 'currency_balance',
-                  currencyBalance: {
-                    currency: 'USD',
-                    balance: 13.79,
-                  },
-                  sevenDayQuota: {
-                    usedPercent: 40,
-                    totalPercent: 100,
-                    label: '余额 $13.79',
-                  },
-                },
+          return prev.map((acc) => {
+            const matched = res.providers?.find((p) => p.id === acc.ccSwitchProviderId || acc.name.toLowerCase().includes(p.name.toLowerCase()));
+            if (matched) {
+              return {
+                ...acc,
+                isActiveInCCSwitch: matched.isCurrent,
+                ccSwitchProviderId: matched.id,
+                appType: matched.appType,
               };
-              updated.push(newEntry);
             }
+            return acc;
           });
-
-          return updated;
         });
 
         if (showNotification) {
@@ -193,43 +138,48 @@ export const App: React.FC = () => {
     if (loadStoredAccounts().length === 0) {
       scanLocalAuthProviders().then((res) => {
         if (res.success && res.accounts && res.accounts.length > 0) {
-          const detected: Account[] = res.accounts.map((a: any) => ({
-            id: a.id || `acc-${Date.now()}-${Math.random()}`,
-            name: a.name || '官方主号',
-            email: a.email || `${a.provider}@official.auth`,
-            platform: a.platform || 'chatgpt-web',
-            provider: a.provider || 'chatgpt',
-            planName: a.planName || 'Plus',
-            planExpiresAt: a.planExpiresAt,
-            tags: [a.planName || 'Plus', '官方授权'],
-            enabled: true,
-            isActiveInCCSwitch: a.isActiveInCCSwitch || false,
-            priority: 1,
-            autoFailoverEnabled: true,
-            lastLoginAt: '2026-11-06 23:25',
-            latestSnapshot: {
-              timestamp: new Date().toISOString(),
-              isHealthy: true,
-              isExhausted: false,
-              isWarning: false,
-              kind: 'rolling_window',
-              rollingWindow: {
-                used: 12,
-                total: a.provider === 'chatgpt' ? 80 : 45,
-                windowDurationHours: 5,
-                resetsAt: new Date(Date.now() + 3600 * 2.5 * 1000).toISOString(),
-                cooldownSecondsRemaining: 3600 * 2.5,
+          const detected: Account[] = res.accounts.map((a: any) => {
+            const isDeepSeek = a.provider === 'deepseek';
+            return {
+              id: a.id || `acc-${Date.now()}-${Math.random()}`,
+              name: a.name || (isDeepSeek ? 'DeepSeek Official' : 'PaperKite'),
+              email: a.email || (isDeepSeek ? 'platform@deepseek.com' : '1044709853@qq.com'),
+              platform: a.platform || (isDeepSeek ? 'deepseek-harness' : 'chatgpt-web'),
+              provider: a.provider || (isDeepSeek ? 'deepseek' : 'chatgpt'),
+              planName: a.planName || (isDeepSeek ? 'DeepSeek-V3 / R1 (满血)' : 'Plus'),
+              planExpiresAt: a.planExpiresAt,
+              tags: [a.planName || (isDeepSeek ? '满血 V3/R1' : 'Plus'), '官方授权'],
+              enabled: true,
+              isActiveInCCSwitch: a.isActiveInCCSwitch || false,
+              priority: 1,
+              autoFailoverEnabled: true,
+              lastLoginAt: '2026-11-06 23:25',
+              latestSnapshot: {
+                timestamp: new Date().toISOString(),
+                isHealthy: true,
+                isExhausted: false,
+                isWarning: false,
+                kind: 'rolling_window',
+                rollingWindow: {
+                  used: isDeepSeek ? 6 : 12,
+                  total: isDeepSeek ? 50 : 80,
+                  windowDurationHours: 5,
+                  resetsAt: new Date(Date.now() + 3600 * (isDeepSeek ? 3.5 : 2.5) * 1000).toISOString(),
+                  cooldownSecondsRemaining: Math.floor(3600 * (isDeepSeek ? 3.5 : 2.5)),
+                },
+                sevenDayQuota: {
+                  usedPercent: isDeepSeek ? 18 : 25,
+                  totalPercent: 100,
+                  cooldownSecondsRemaining: 3600 * 24 * 4 + 3600 * 18,
+                  resetsAt: '周一 00:00',
+                  label: isDeepSeek ? '18% 充沛' : '25% 充沛',
+                },
               },
-              sevenDayQuota: {
-                usedPercent: 25,
-                totalPercent: 100,
-                label: '25% 充沛',
-              },
-            },
-          }));
+            };
+          });
           setAccounts(detected);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(detected));
-          showToast(`⚡ 已自动接入本地官方 ${detected[0]?.name} (${detected[0]?.planName || 'Plus'}) 会话`);
+          showToast(`⚡ 已成功接入本地官方 ${detected.map(d => d.name).join('、')} 账号`);
         }
       });
     }
@@ -246,30 +196,43 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Real-time countdown ticking
+  // Real-time countdown ticking for both 5h rolling window AND 7day weekly quota
   useEffect(() => {
     const timer = setInterval(() => {
       setAccounts((prev) =>
         prev.map((acc) => {
-          if (
-            acc.latestSnapshot?.kind === 'rolling_window' &&
-            acc.latestSnapshot.rollingWindow
-          ) {
-            const currentSec = acc.latestSnapshot.rollingWindow.cooldownSecondsRemaining;
-            if (currentSec > 0) {
-              return {
-                ...acc,
-                latestSnapshot: {
-                  ...acc.latestSnapshot,
-                  rollingWindow: {
-                    ...acc.latestSnapshot.rollingWindow,
-                    cooldownSecondsRemaining: currentSec - 1,
-                  },
+          let updatedSnapshot = acc.latestSnapshot;
+          let changed = false;
+
+          if (updatedSnapshot?.rollingWindow) {
+            const current5h = updatedSnapshot.rollingWindow.cooldownSecondsRemaining;
+            if (current5h > 0) {
+              updatedSnapshot = {
+                ...updatedSnapshot,
+                rollingWindow: {
+                  ...updatedSnapshot.rollingWindow,
+                  cooldownSecondsRemaining: current5h - 1,
                 },
               };
+              changed = true;
             }
           }
-          return acc;
+
+          if (updatedSnapshot?.sevenDayQuota) {
+            const currentWeekly = updatedSnapshot.sevenDayQuota.cooldownSecondsRemaining;
+            if (currentWeekly && currentWeekly > 0) {
+              updatedSnapshot = {
+                ...updatedSnapshot,
+                sevenDayQuota: {
+                  ...updatedSnapshot.sevenDayQuota,
+                  cooldownSecondsRemaining: currentWeekly - 1,
+                },
+              };
+              changed = true;
+            }
+          }
+
+          return changed ? { ...acc, latestSnapshot: updatedSnapshot } : acc;
         })
       );
     }, 1000);
@@ -801,6 +764,7 @@ export const App: React.FC = () => {
                                   onRefresh={handleRefresh}
                                   onSetAsActive={handleSetActive}
                                   onDelete={handleDelete}
+                                  onUpdateAccount={handleUpdateAccount}
                                 />
                               ))}
                             </div>
@@ -816,6 +780,7 @@ export const App: React.FC = () => {
                             onRefresh={handleRefresh}
                             onSetAsActive={handleSetActive}
                             onDelete={handleDelete}
+                            onUpdateAccount={handleUpdateAccount}
                           />
                         ))}
                       </div>

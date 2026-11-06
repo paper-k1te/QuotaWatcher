@@ -128,7 +128,7 @@ if os.path.exists(codex_auth):
         tokens = d.get('tokens', {})
         id_token = tokens.get('id_token') or tokens.get('access_token')
         email = ''
-        name = 'OpenAI Official'
+        name = 'PaperKite'
         plan = 'Plus'
         expires_at = ''
         if id_token and len(id_token.split('.')) == 3:
@@ -136,7 +136,7 @@ if os.path.exists(codex_auth):
             padded = payload + '=' * (-len(payload) % 4)
             claims = json.loads(base64.urlsafe_b64decode(padded).decode('utf-8'))
             email = claims.get('email') or claims.get('https://api.openai.com/profile', {}).get('email') or ''
-            name = claims.get('name') or claims.get('https://api.openai.com/profile', {}).get('name') or 'OpenAI Official'
+            name = claims.get('name') or claims.get('https://api.openai.com/profile', {}).get('name') or 'PaperKite'
             auth_info = claims.get('https://api.openai.com/auth', {})
             plan_raw = auth_info.get('chatgpt_plan_type', 'plus')
             plan = 'Plus' if plan_raw == 'plus' else 'Pro' if plan_raw == 'pro' else 'Business' if 'biz' in plan_raw or 'bus' in plan_raw else 'Team' if 'team' in plan_raw else plan_raw.capitalize()
@@ -146,7 +146,7 @@ if os.path.exists(codex_auth):
         results.append({
             'id': 'local-codex-openai',
             'name': name,
-            'email': email,
+            'email': email or '1044709853@qq.com',
             'provider': 'chatgpt',
             'platform': 'chatgpt-web',
             'planName': plan,
@@ -158,29 +158,41 @@ if os.path.exists(codex_auth):
     except Exception as e:
         pass
 
-# 2. Check CC-Switch DB
-db = os.path.join(home, '.cc-switch', 'cc-switch.db')
-if os.path.exists(db):
+# 2. Check DeepSeek Harness (~/.dsh/.credentials.yaml)
+dsh_creds = os.path.join(home, '.dsh', '.credentials.yaml')
+if os.path.exists(dsh_creds):
     try:
-        import sqlite3
-        conn = sqlite3.connect(db)
-        c = conn.cursor()
-        for r in c.execute('SELECT id, app_type, name, category, is_current, settings_config, meta FROM providers'):
-            app_type, p_name, cat, is_curr, s_cfg, meta = r[1], r[2], r[3], bool(r[4]), r[5], r[6]
-            if cat == 'official' and app_type in ['claude', 'gemini', 'agy', 'grokbuild']:
-                target_prov = 'claude' if app_type == 'claude' else 'antigravity' if app_type == 'agy' else 'gemini' if app_type == 'gemini' else 'grok'
-                results.append({
-                    'id': f'local-cc-{r[0]}',
-                    'name': p_name,
-                    'email': 'account@official.auth',
-                    'provider': target_prov,
-                    'platform': 'claude-web' if target_prov == 'claude' else 'gemini',
-                    'planName': 'Pro' if target_prov == 'claude' else 'Free Tier',
-                    'isOfficial': True,
-                    'isActiveInCCSwitch': is_curr,
-                    'source': 'CC-Switch Official Provider'
-                })
-        conn.close()
+        token = ''
+        device_id = ''
+        with open(dsh_creds, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        in_default = False
+        in_device = False
+        for line in lines:
+            line_str = line.strip()
+            if 'deepseek-account-platform/default' in line_str:
+                in_default = True
+                in_device = False
+            elif 'deepseek-account-platform/device' in line_str:
+                in_device = True
+                in_default = False
+            elif line_str.startswith('id:') and in_device:
+                device_id = line_str.replace('id:', '').strip()
+            elif line_str.startswith('token:') and in_default:
+                token = line_str.replace('token:', '').strip()
+
+        if token:
+            results.append({
+                'id': 'local-deepseek-official',
+                'name': 'DeepSeek Official',
+                'email': 'platform@deepseek.com',
+                'provider': 'deepseek',
+                'platform': 'deepseek-harness',
+                'planName': 'DeepSeek-V3 / R1 (满血)',
+                'isOfficial': True,
+                'isActiveInCCSwitch': True,
+                'source': 'DeepSeek Harness Local Auth'
+            })
     except Exception as e:
         pass
 
