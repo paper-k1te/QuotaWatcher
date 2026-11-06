@@ -22,7 +22,13 @@ import { SettingsView } from './components/SettingsView';
 import { TrayMiniWidget } from './components/TrayMiniWidget';
 import { AddAccountModal } from './components/AddAccountModal';
 import { AddCustomProviderModal } from './components/AddCustomProviderModal';
-import { checkCCSwitchInstalled, setupTrayListeners } from './services/tauriBridge';
+import { 
+  checkCCSwitchInstalled, 
+  setupTrayListeners, 
+  setWindowMode, 
+  minimizeWindow, 
+  closeWindow 
+} from './services/tauriBridge';
 
 export const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
@@ -316,17 +322,39 @@ export const App: React.FC = () => {
     return true;
   });
 
+  // Handle switching view mode between dashboard and floating tray window
+  const handleSwitchViewMode = (mode: 'dashboard' | 'tray') => {
+    setViewMode(mode);
+    setWindowMode(mode);
+  };
+
   const activeAccount = accounts.find((a) => a.isActiveInCCSwitch);
   const warningCount = accounts.filter(
     (a) => a.latestSnapshot?.isWarning || a.latestSnapshot?.isExhausted
   ).length;
+
+  // 1. TRAY MODE: Independent Floating Window (Freely draggable across screens)
+  if (viewMode === 'tray') {
+    return (
+      <div className="h-screen w-screen bg-[#080a10] text-slate-100 flex flex-col font-sans select-none overflow-hidden p-0">
+        <TrayMiniWidget
+          accounts={accounts}
+          onRefreshAll={handleRefreshAll}
+          onOpenFullApp={() => handleSwitchViewMode('dashboard')}
+          onCloseWindow={closeWindow}
+          onMinimizeWindow={minimizeWindow}
+          onSetActiveAccount={handleSetActive}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen bg-[#080a10] text-slate-100 flex flex-col font-sans select-none overflow-hidden">
       {/* 1. Custom Frameless TitleBar (Window Controls & App Title) */}
       <TitleBar
         viewMode={viewMode}
-        onToggleViewMode={setViewMode}
+        onToggleViewMode={handleSwitchViewMode}
         activeCount={accounts.length}
         warningCount={warningCount}
       />
@@ -381,26 +409,8 @@ export const App: React.FC = () => {
         ) : (
           <main className="flex-1 flex flex-col overflow-y-auto bg-[#080a10] no-scrollbar">
             <div className="mx-auto w-full max-w-6xl p-4 sm:p-5 space-y-3.5">
-              {viewMode === 'tray' ? (
-                /* Tray Mini Widget Mode Preview */
-                <div className="flex flex-col items-center justify-center py-6 space-y-4">
-                  <div className="text-center">
-                    <h2 className="text-sm font-semibold text-slate-300">
-                      系统托盘弹出式视窗预览
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      极简、低干扰、左键点击右下角托盘图标一键呼出，实时观察剩余冷却与用量
-                    </p>
-                  </div>
-                  <TrayMiniWidget
-                    accounts={accounts}
-                    onRefreshAll={handleRefreshAll}
-                    onOpenFullApp={() => setViewMode('dashboard')}
-                  />
-                </div>
-              ) : (
-                /* Full Dashboard Mode: DIRECT FLAT LAYOUT (Zero Redundant Banners!) */
-                <div className="space-y-3.5">
+              {/* Full Dashboard Mode: DIRECT FLAT LAYOUT (Zero Redundant Banners!) */}
+              <div className="space-y-3.5">
                   {/* Header Toolbar (CCSwitch style: Provider Context, Search, View Modes & Add) */}
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-slate-800/80 bg-[#0c0f18]/90 px-4 py-2.5 shadow-sm backdrop-blur-md">
                     {/* Left: Current Provider Focus Info */}
@@ -606,7 +616,6 @@ export const App: React.FC = () => {
                     </div>
                   )}
                 </div>
-              )}
             </div>
           </main>
         )}

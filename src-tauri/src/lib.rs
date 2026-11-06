@@ -53,6 +53,24 @@ fn window_close(window: tauri::Window) {
     let _ = window.hide();
 }
 
+#[tauri::command]
+fn set_window_mode(window: tauri::Window, mode: String) {
+    if mode == "tray" {
+        let _ = window.unmaximize();
+        let _ = window.set_size(tauri::LogicalSize::new(360.0, 560.0));
+        let _ = window.set_always_on_top(true);
+    } else {
+        let _ = window.set_always_on_top(false);
+        let _ = window.set_size(tauri::LogicalSize::new(1120.0, 760.0));
+        let _ = window.center();
+    }
+}
+
+#[tauri::command]
+fn toggle_always_on_top(window: tauri::Window, always_on_top: bool) {
+    let _ = window.set_always_on_top(always_on_top);
+}
+
 fn debug_log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -81,7 +99,9 @@ pub fn run(listener: std::net::TcpListener) {
             check_cc_switch,
             window_minimize,
             window_toggle_maximize,
-            window_close
+            window_close,
+            set_window_mode,
+            toggle_always_on_top
         ])
         .setup(move |app| {
             debug_log("setup() entered");

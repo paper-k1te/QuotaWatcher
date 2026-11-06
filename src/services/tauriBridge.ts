@@ -77,3 +77,27 @@ export const closeWindow = async (): Promise<void> => {
     console.warn('Failed to close window:', err);
   }
 };
+
+export const setWindowMode = async (mode: 'dashboard' | 'tray'): Promise<void> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] setWindowMode:', mode);
+    return;
+  }
+  try {
+    await invoke('set_window_mode', { mode });
+  } catch (err) {
+    console.warn('Failed to set window mode:', err);
+  }
+};
+
+export const setAlwaysOnTop = async (alwaysOnTop: boolean): Promise<void> => {
+  if (!isTauriEnvironment()) {
+    console.log('[Mock] setAlwaysOnTop:', alwaysOnTop);
+    return;
+  }
+  try {
+    await invoke('toggle_always_on_top', { alwaysOnTop });
+  } catch (err) {
+    console.warn('Failed to toggle always on top:', err);
+  }
+};
