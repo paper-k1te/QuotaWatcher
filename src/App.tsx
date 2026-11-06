@@ -15,7 +15,7 @@ import { AccountCard } from './components/AccountCard';
 import { CCSwitchSynergyBanner } from './components/CCSwitchSynergyBanner';
 import { TrayMiniWidget } from './components/TrayMiniWidget';
 import { AddAccountModal } from './components/AddAccountModal';
-import { checkCCSwitchInstalled, setupTrayListeners, isTauriEnvironment } from './services/tauriBridge';
+import { checkCCSwitchInstalled, setupTrayListeners } from './services/tauriBridge';
 
 export const App: React.FC = () => {
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
