@@ -4,7 +4,6 @@ import {
   Plus, 
   RotateCw, 
   Bell, 
-  Search, 
   LayoutGrid, 
   List, 
   Layers, 
@@ -44,7 +43,6 @@ export const App: React.FC = () => {
   const [layoutMode, setLayoutMode] = useState<'list' | 'grid'>('list'); // Default to clean CCSwitch-style list
   const [selectedProvider, setSelectedProvider] = useState<string>('claude');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState<boolean>(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [isAddCustomProviderModalOpen, setIsAddCustomProviderModalOpen] = useState<boolean>(false);
@@ -310,22 +308,11 @@ export const App: React.FC = () => {
     showToast(`🎉 成功添加新账号「${created.name}」`);
   };
 
-  // Filter accounts
+  // Filter accounts by selected provider
   const filteredAccounts = accounts.filter((acc) => {
-    const query = searchQuery.toLowerCase().trim();
-    const matchSearch =
-      !query ||
-      acc.name.toLowerCase().includes(query) ||
-      acc.provider.toLowerCase().includes(query) ||
-      (acc.models && acc.models.some((m) => m.toLowerCase().includes(query))) ||
-      acc.tags.some((t) => t.toLowerCase().includes(query));
-
-    if (!matchSearch) return false;
-
     if (selectedProvider !== 'all' && acc.provider !== selectedProvider) {
       return false;
     }
-
     return true;
   });
 
@@ -449,20 +436,8 @@ export const App: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Right: Search, View Mode Toggle & Add Button */}
+                    {/* Right: View Mode Toggle, Refresh & Add Button */}
                     <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-                      {/* Search Bar */}
-                      <div className="relative">
-                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-                        <input
-                          type="text"
-                          placeholder="搜索模型或账号..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-36 sm:w-48 rounded-lg border border-slate-800 bg-[#121624] pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none transition-colors"
-                        />
-                      </div>
-
                       {/* View Switcher: List (CCSwitch-style) vs Grid Cards */}
                       <div className="flex items-center rounded-lg border border-slate-800 bg-[#121624] p-0.5 text-xs">
                         <button
