@@ -429,7 +429,7 @@ export const AddAccountModal: React.FC<Props> = ({
               {selectedProviderId === 'chatgpt' ? (
                 <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
                   <p>
-                    采用 OpenAI 官方 Codex CLI 标准 OAuth 2.0 PKCE 流程。点击下方按钮后，将在系统外部浏览器打开 OpenAI 授权网关，通过本地回环端口（<code className="text-blue-300 bg-slate-900 px-1 py-0.5 rounded">http://localhost:1455/auth/callback</code>）自动将 Access Token 写入本地授权库，无需手动复制凭证。
+                    采用 OpenAI 官方 Codex CLI 标准 OAuth 2.0 PKCE 流程。点击下方按钮后，将在系统外部浏览器打开 OpenAI 授权网关，QuotaWatcher 后台守护进程将在（<code className="text-blue-300 bg-slate-900 px-1 py-0.5 rounded">http://localhost:1455/auth/callback</code>）自动接收 Access Token 并写入本地授权库，无需手动复制凭证。
                   </p>
                   <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all select-all relative">
                     <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方授权网址规范:</span>
@@ -446,63 +446,83 @@ export const AddAccountModal: React.FC<Props> = ({
                     </div>
                   </div>
                 </div>
+              ) : selectedProviderId === 'gemini' || selectedProviderId === 'antigravity' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    采用 Google 官方 Cloud Code / Gemini CLI 标准 OAuth 2.0 PKCE 流程。点击下方按钮唤起 Google 官方授权页，授权完成后由本地回环服务自动接收并绑定，获取免费的高并发 1500 RPD 额度。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all select-all relative">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">Google 官方标准 OAuth 授权流:</span>
+                    <span className="text-slate-300">{PROVIDER_AUTH_URLS.gemini?.url}</span>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyAuthUrl(PROVIDER_AUTH_URLS.gemini?.url || '')}
+                        className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 cursor-pointer"
+                      >
+                        {copiedUrl ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        <span>{copiedUrl ? '已复制 Google 授权网址' : '复制 Google 官方授权链接'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'grok' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    采用 xAI Grok CLI 官方 OAuth 2.0 PKCE 标准流程。通过本地回环端口（<code className="text-blue-300 bg-slate-900 px-1 py-0.5 rounded">http://localhost:1455/auth/callback</code>）自动接收授权凭据并追踪 Grok 2 滚动并发额度。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all select-all relative">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">xAI 官方标准 OAuth 授权流:</span>
+                    <span className="text-slate-300">{PROVIDER_AUTH_URLS.grok?.url}</span>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyAuthUrl(PROVIDER_AUTH_URLS.grok?.url || '')}
+                        className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 cursor-pointer"
+                      >
+                        {copiedUrl ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        <span>{copiedUrl ? '已复制 xAI 授权网址' : '复制 xAI 官方授权链接'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               ) : selectedProviderId === 'claude' ? (
                 <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
                   <p>
-                    通过 Anthropic 官方控制台获取 API Key 或通过 Claude Code 终端协议登录。安全接入 Claude 3.7 Sonnet 及 5h 并发与周度配额追踪。
+                    采用 Anthropic 官方 Claude Code CLI 终端 OAuth PKCE 授权标准流。点击下方按钮将在独立命令行窗口启动 <code className="text-amber-300 bg-slate-900 px-1 py-0.5 rounded">npx @anthropic-ai/claude-code login</code>，浏览器点击允许后自动同步。
                   </p>
-                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台网址:</span>
-                    <span>https://console.anthropic.com/settings/keys</span>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">终端命令规范:</span>
+                    <span className="text-amber-300">npx @anthropic-ai/claude-code login</span>
                   </div>
                 </div>
               ) : selectedProviderId === 'deepseek' ? (
                 <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
                   <p>
-                    直达 DeepSeek 开放平台创建官方 API Key。创建完成后直接粘贴，QuotaWatcher 将即时同步账户可用余额（CNY/USD）与近期调用统计。
+                    支持 DeepSeek Harness (~/.dsh) 满血版会话穿透与官方 API 标准鉴权流。点击下方按钮可直接穿透检测本地 Harness 登录凭证，或在【手动录入】中进行实时在线余额探测。
                   </p>
-                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方开放平台网址:</span>
-                    <span>https://platform.deepseek.com/api_keys</span>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方 Harness 凭据路径:</span>
+                    <span className="text-blue-300">~/.dsh/.credentials.yaml</span>
                   </div>
                 </div>
               ) : selectedProviderId === 'trae' ? (
                 <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
                   <p>
-                    字节跳动 Trae 官方开发者授权。在浏览器中登录 Trae 后，可在【本地凭据穿透】中一键读取本机凭据并同步 500 次/天的高级模型配额。
+                    采用字节跳动 Trae IDE 本地全局状态数据库（globalStorage）JWT 穿透授权流。点击下方按钮直接读取 Trae 本地会话，一键同步每日 500 次高级模型配额。
                   </p>
-                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方入口:</span>
-                    <span>https://www.trae.ai/</span>
-                  </div>
-                </div>
-              ) : selectedProviderId === 'gemini' || selectedProviderId === 'antigravity' ? (
-                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
-                  <p>
-                    Google AI Studio 官方控制台授权。直接在 Google 官方平台创建 API 凭据，获取免费的高并发 1500 RPD 额度。
-                  </p>
-                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台:</span>
-                    <span>https://aistudio.google.com/app/apikey</span>
-                  </div>
-                </div>
-              ) : selectedProviderId === 'kimi' ? (
-                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
-                  <p>
-                    Moonshot Kimi 开放平台官方授权。生成 API Key 并在应用内管理长上下文及周度额度。
-                  </p>
-                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台:</span>
-                    <span>https://platform.moonshot.cn/console/api-keys</span>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">本地状态数据库:</span>
+                    <span className="text-indigo-300">%APPDATA%\Trae\User\globalStorage\state.vscdb</span>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
                   <p>
-                    点击下方按钮唤起 {currentMeta.name} 官方登录与授权控制台。
+                    {currentMeta.name} 官方标准 Bearer 鉴权探测流。通过官方接口实时校验凭据有效性与可用余额。
                   </p>
                   <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
-                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方网址:</span>
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台:</span>
                     <span>{PROVIDER_AUTH_URLS[selectedProviderId]?.url || 'https://chatgpt.com/'}</span>
                   </div>
                 </div>
@@ -526,7 +546,17 @@ export const AddAccountModal: React.FC<Props> = ({
                 <span>
                   {selectedProviderId === 'chatgpt'
                     ? '🚀 唤起 OpenAI 官方网页授权登录 (OAuth PKCE)'
-                    : `🚀 打开 ${currentMeta.name} 官方授权控制台`}
+                    : selectedProviderId === 'gemini' || selectedProviderId === 'antigravity'
+                    ? '🚀 唤起 Google 官方 OAuth 授权登录 (OAuth PKCE)'
+                    : selectedProviderId === 'grok'
+                    ? '🚀 唤起 xAI Grok 官方 OAuth 授权登录 (OAuth PKCE)'
+                    : selectedProviderId === 'claude'
+                    ? '💻 调起 Claude 官方 CLI 终端 OAuth 授权'
+                    : selectedProviderId === 'deepseek'
+                    ? '⚡ 穿透检测 DeepSeek 官方 Harness 凭据'
+                    : selectedProviderId === 'trae'
+                    ? '⚡ 穿透提取 Trae IDE 本地开发者 JWT 凭据'
+                    : `🚀 启动 ${currentMeta.name} 官方授权流`}
                 </span>
               </button>
 

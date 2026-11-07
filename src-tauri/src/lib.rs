@@ -560,6 +560,94 @@ fn debug_log(msg: &str) {
     }
 }
 
+fn start_oauth_callback_server(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let listener = loop {
+            match std::net::TcpListener::bind("127.0.0.1:1455") {
+                Ok(l) => {
+                    debug_log("OAuth callback server successfully bound to 127.0.0.1:1455");
+                    break l;
+                }
+                Err(e) => {
+                    debug_log(&format!("Failed to bind 127.0.0.1:1455 (will retry in 1s): {}", e));
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                }
+            }
+        };
+
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                let app_h = app_handle.clone();
+                std::thread::spawn(move || {
+                    use std::io::{Read, Write};
+                    let mut buf = [0u8; 8192];
+                    if let Ok(n) = stream.read(&mut buf) {
+                        let req_str = String::from_utf8_lossy(&buf[..n]);
+                        if let Some(first_line) = req_str.lines().next() {
+                            if first_line.contains("/auth/callback") || first_line.contains("/callback") {
+                                let mut code = String::new();
+                                let mut state = String::new();
+                                if let Some(q_idx) = first_line.find('?') {
+                                    let path_part = &first_line[q_idx + 1..];
+                                    let query_str = path_part.split_whitespace().next().unwrap_or("");
+                                    for pair in query_str.split('&') {
+                                        let mut kv = pair.split('=');
+                                        let k = kv.next().unwrap_or("");
+                                        let v = kv.next().unwrap_or("");
+                                        if k == "code" {
+                                            code = v.to_string();
+                                        } else if k == "state" {
+                                            state = v.to_string();
+                                        }
+                                    }
+                                }
+
+                                let html = r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>QuotaWatcher - 官方授权成功</title>
+  <style>
+    body { background: #080b14; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #0f172a; border: 1px solid #10b981; border-radius: 20px; padding: 48px; text-align: center; max-width: 480px; box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.25); }
+    h1 { color: #10b981; font-size: 26px; margin: 16px 0 8px; }
+    p { color: #94a3b8; font-size: 15px; line-height: 1.6; margin: 0 0 20px; }
+    .badge { display: inline-block; background: #064e3b; color: #6ee7b7; padding: 6px 16px; border-radius: 9999px; font-size: 13px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size: 56px;">🎉</div>
+    <h1>官方授权验证成功！</h1>
+    <div class="badge">已接收授权凭据</div>
+    <p>凭据已自动同步至 QuotaWatcher 监控中心。<br/>您可以直接关闭此浏览器标签页，返回桌面客户端。</p>
+  </div>
+  <script>setTimeout(() => window.close(), 2500);</script>
+</body>
+</html>"#;
+                                let resp = format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                    html.as_bytes().len(),
+                                    html
+                                );
+                                let _ = stream.write_all(resp.as_bytes());
+                                let _ = stream.flush();
+
+                                if !code.is_empty() {
+                                    if let Some(res) = run_auth_sentinel(&["exchange_oauth_code", &code, &state]) {
+                                        debug_log(&format!("OAuth code exchange result: {:?}", res));
+                                        let _ = app_h.emit("oauth-completed", res);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(listener: std::net::TcpListener) {
     debug_log("run() entered");
@@ -589,6 +677,10 @@ pub fn run(listener: std::net::TcpListener) {
         ])
         .setup(move |app| {
             debug_log("setup() entered");
+
+            // OAuth 2.0 PKCE 1455 callback server
+            let app_handle_oauth = app.handle().clone();
+            start_oauth_callback_server(app_handle_oauth);
 
             // Single instance wake listener
             let app_handle = app.handle().clone();

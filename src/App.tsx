@@ -12,6 +12,7 @@ import {
   Globe
 } from 'lucide-react';
 import { providersMeta as initialProvidersMeta } from './mock/mockData';
+import { listen } from '@tauri-apps/api/event';
 import { Account, ProviderMeta, isAccountLoggedIn } from './types';
 import { AccountCard } from './components/AccountCard';
 import { AccountRow } from './components/AccountRow';
@@ -236,6 +237,32 @@ export const App: React.FC = () => {
     });
 
     let unlisten: (() => void) | null = null;
+    let unlistenOAuth: (() => void) | null = null;
+
+    listen<any>('oauth-completed', (event) => {
+      const res = event.payload;
+      if (res && res.success && res.account) {
+        const acc = res.account as Account;
+        setAccounts((prev) => {
+          const updated = [...prev];
+          const existingIdx = updated.findIndex((a) => a.id === acc.id || a.email === acc.email);
+          if (existingIdx >= 0) {
+            updated[existingIdx] = { ...updated[existingIdx], ...acc };
+          } else {
+            updated.unshift(acc);
+          }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          return updated;
+        });
+        setIsAddModalOpen(false);
+        showToast(`🎉 官方授权成功！已绑定账号「${acc.name}」，已拉取最新真实额度！`);
+      } else if (res && !res.success) {
+        showToast(`❌ 授权失败: ${res.error || 'Token 兑换异常'}`);
+      }
+    }).then((fn) => {
+      unlistenOAuth = fn;
+    });
+
     setupTrayListeners(() => {
       handleRefreshAll();
     }).then((fn) => {
@@ -244,6 +271,7 @@ export const App: React.FC = () => {
 
     return () => {
       if (unlisten) unlisten();
+      if (unlistenOAuth) unlistenOAuth();
     };
   }, []);
 

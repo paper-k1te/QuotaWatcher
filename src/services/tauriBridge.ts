@@ -131,46 +131,62 @@ export const fetchRealAccountQuota = async (
 export const OPENAI_OAUTH_URL =
   'https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid+profile+email+offline_access+api.connectors.read+api.connectors.invoke&code_challenge=_h8l5uaNrqlli49mNL5GWR7VFsP8AIFVTGu4-KyElDk&code_challenge_method=S256&state=8fc4f3a145b54f5dbb7cd5bbf9c380b0014ed53d4c9f4e768b2b016c731d7078&id_token_add_organizations=true&codex_cli_simplified_flow=true&originator=codex_cli_rs';
 
-export const PROVIDER_AUTH_URLS: Record<string, { url: string; title: string }> = {
+export const GOOGLE_OAUTH_URL =
+  'https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcloud-platform+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcclog&access_type=offline&prompt=consent';
+
+export const GROK_OAUTH_URL =
+  'https://auth.x.ai/oauth/authorize?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid+profile+email+offline_access+grok-cli%3Aaccess+api%3Aaccess';
+
+export const PROVIDER_AUTH_URLS: Record<string, { url: string; title: string; flowType: 'oauth_pkce' | 'cli_oauth' | 'harness' | 'jwt' | 'bearer' }> = {
   chatgpt: {
     url: OPENAI_OAUTH_URL,
-    title: 'OpenAI 官方 OAuth PKCE 授权',
+    title: 'OpenAI 官方 OAuth 2.0 PKCE 授权',
+    flowType: 'oauth_pkce',
+  },
+  gemini: {
+    url: GOOGLE_OAUTH_URL,
+    title: 'Google 官方 Cloud Code OAuth 2.0 PKCE 授权',
+    flowType: 'oauth_pkce',
+  },
+  antigravity: {
+    url: GOOGLE_OAUTH_URL,
+    title: 'Google / Antigravity 官方 OAuth 2.0 PKCE 授权',
+    flowType: 'oauth_pkce',
+  },
+  grok: {
+    url: GROK_OAUTH_URL,
+    title: 'xAI Grok 官方 OAuth 2.0 PKCE 授权',
+    flowType: 'oauth_pkce',
   },
   claude: {
-    url: 'https://console.anthropic.com/settings/keys',
-    title: 'Anthropic Claude 控制台与 API 授权',
+    url: 'https://claude.ai/login',
+    title: 'Claude 官方 CLI 终端 OAuth / Web Session 标准鉴权',
+    flowType: 'cli_oauth',
   },
   deepseek: {
-    url: 'https://platform.deepseek.com/api_keys',
-    title: 'DeepSeek 开放平台 API 授权',
+    url: 'https://chat.deepseek.com',
+    title: 'DeepSeek 官方 Harness 穿透 / 标准 API 鉴权',
+    flowType: 'harness',
   },
   trae: {
     url: 'https://www.trae.ai/',
-    title: 'Trae 官方登录与开发者授权',
-  },
-  gemini: {
-    url: 'https://aistudio.google.com/app/apikey',
-    title: 'Google AI Studio 官方控制台',
-  },
-  antigravity: {
-    url: 'https://aistudio.google.com/app/apikey',
-    title: 'Google AI Studio / Antigravity 控制台',
+    title: '字节跳动 Trae IDE 本地 JWT 状态数据库鉴权',
+    flowType: 'jwt',
   },
   kimi: {
     url: 'https://platform.moonshot.cn/console/api-keys',
-    title: 'Moonshot Kimi 开放平台',
+    title: 'Moonshot Kimi 官方标准 Bearer 鉴权',
+    flowType: 'bearer',
   },
   siliconflow: {
     url: 'https://cloud.siliconflow.cn/account/ak',
-    title: 'SiliconFlow 硅基流动 API 密钥',
+    title: 'SiliconFlow 硅基流动官方标准 Bearer 鉴权',
+    flowType: 'bearer',
   },
   openrouter: {
     url: 'https://openrouter.ai/keys',
-    title: 'OpenRouter API Keys',
-  },
-  grok: {
-    url: 'https://console.x.ai/',
-    title: 'xAI Grok 控制台',
+    title: 'OpenRouter 官方标准 Bearer 鉴权',
+    flowType: 'bearer',
   },
 };
 
