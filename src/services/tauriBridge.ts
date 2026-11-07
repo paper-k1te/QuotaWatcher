@@ -128,11 +128,85 @@ export const fetchRealAccountQuota = async (
   }
 };
 
+export const OPENAI_OAUTH_URL =
+  'https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_EMoamEEZ73f0CkXaXp7hrann&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid+profile+email+offline_access+api.connectors.read+api.connectors.invoke&code_challenge=_h8l5uaNrqlli49mNL5GWR7VFsP8AIFVTGu4-KyElDk&code_challenge_method=S256&state=8fc4f3a145b54f5dbb7cd5bbf9c380b0014ed53d4c9f4e768b2b016c731d7078&id_token_add_organizations=true&codex_cli_simplified_flow=true&originator=codex_cli_rs';
+
+export const PROVIDER_AUTH_URLS: Record<string, { url: string; title: string }> = {
+  chatgpt: {
+    url: OPENAI_OAUTH_URL,
+    title: 'OpenAI 官方 OAuth PKCE 授权',
+  },
+  claude: {
+    url: 'https://console.anthropic.com/settings/keys',
+    title: 'Anthropic Claude 控制台与 API 授权',
+  },
+  deepseek: {
+    url: 'https://platform.deepseek.com/api_keys',
+    title: 'DeepSeek 开放平台 API 授权',
+  },
+  trae: {
+    url: 'https://www.trae.ai/',
+    title: 'Trae 官方登录与开发者授权',
+  },
+  gemini: {
+    url: 'https://aistudio.google.com/app/apikey',
+    title: 'Google AI Studio 官方控制台',
+  },
+  antigravity: {
+    url: 'https://aistudio.google.com/app/apikey',
+    title: 'Google AI Studio / Antigravity 控制台',
+  },
+  kimi: {
+    url: 'https://platform.moonshot.cn/console/api-keys',
+    title: 'Moonshot Kimi 开放平台',
+  },
+  siliconflow: {
+    url: 'https://cloud.siliconflow.cn/account/ak',
+    title: 'SiliconFlow 硅基流动 API 密钥',
+  },
+  openrouter: {
+    url: 'https://openrouter.ai/keys',
+    title: 'OpenRouter API Keys',
+  },
+  grok: {
+    url: 'https://console.x.ai/',
+    title: 'xAI Grok 控制台',
+  },
+};
+
+export const startOAuthLogin = async (
+  provider: string
+): Promise<{ success: boolean; url?: string; message?: string }> => {
+  if (!isTauriEnvironment()) {
+    const info = PROVIDER_AUTH_URLS[provider] || { url: 'https://chatgpt.com/', title: 'AI 登录' };
+    window.open(info.url, '_blank');
+    return { success: true, url: info.url, message: `已在浏览器打开 ${info.title}` };
+  }
+  try {
+    return await invoke<{ success: boolean; url?: string; message?: string }>('start_oauth_login', {
+      provider,
+    });
+  } catch (err) {
+    console.warn('start_oauth_login not found, attempting open_provider_login or direct URL:', err);
+    try {
+      return await invoke<{ success: boolean; url?: string; message?: string }>('open_provider_login', {
+        providerId: provider,
+      });
+    } catch {
+      const info = PROVIDER_AUTH_URLS[provider] || { url: 'https://chatgpt.com/', title: 'AI 登录' };
+      window.open(info.url, '_blank');
+      return { success: true, url: info.url, message: `已在浏览器打开 ${info.title}` };
+    }
+  }
+};
+
 export const openProviderLogin = async (
   providerId: string
 ): Promise<{ success: boolean; url?: string; message?: string }> => {
   if (!isTauriEnvironment()) {
-    return { success: false, message: '非桌面环境' };
+    const info = PROVIDER_AUTH_URLS[providerId] || { url: 'https://chatgpt.com/', title: 'AI 官方登录' };
+    window.open(info.url, '_blank');
+    return { success: true, url: info.url, message: `已在外部浏览器打开 ${info.title}` };
   }
   try {
     return await invoke<{ success: boolean; url?: string; message?: string }>(

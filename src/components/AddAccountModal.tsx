@@ -8,15 +8,20 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Copy,
+  Check
 } from 'lucide-react';
 import { Account, ProviderMeta } from '../types';
 import { 
   scanProviderAuth, 
   openProviderLogin, 
+  startOAuthLogin,
   launchCliLogin, 
   parseAndBindSession, 
-  fetchRealAccountQuota 
+  fetchRealAccountQuota,
+  OPENAI_OAUTH_URL,
+  PROVIDER_AUTH_URLS
 } from '../services/tauriBridge';
 import { getPlansForProvider, QuotaMechanism } from '../mock/providerPlans';
 import { ProviderIcon } from './ProviderIcons';
@@ -41,8 +46,8 @@ export const AddAccountModal: React.FC<Props> = ({
     initialProvider && initialProvider !== 'all' ? initialProvider : 'chatgpt'
   );
 
-  // Active onboarding tab: 'local_scan' | 'browser_session' | 'cli_pkce' | 'manual'
-  const [activeTab, setActiveTab] = useState<'local_scan' | 'browser_session' | 'cli_pkce' | 'manual'>('local_scan');
+  // Active onboarding tab: 'oauth_pkce' (Primary) | 'local_scan' | 'browser_session' | 'manual'
+  const [activeTab, setActiveTab] = useState<'oauth_pkce' | 'local_scan' | 'browser_session' | 'manual'>('oauth_pkce');
 
   // Session input & verification state
   const [sessionInput, setSessionInput] = useState('');
@@ -62,7 +67,9 @@ export const AddAccountModal: React.FC<Props> = ({
 
   const [isScanning, setIsScanning] = useState(false);
   const [scanFeedback, setScanFeedback] = useState<string | null>(null);
-  const [cliFeedback, setCliFeedback] = useState<string | null>(null);
+  const [oauthFeedback, setOauthFeedback] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [isLaunchingOAuth, setIsLaunchingOAuth] = useState(false);
 
   // Sync plans when provider changes
   useEffect(() => {
@@ -79,7 +86,6 @@ export const AddAccountModal: React.FC<Props> = ({
     }
     setVerifyResult(null);
     setScanFeedback(null);
-    setCliFeedback(null);
   }, [selectedProviderId]);
 
   // Sync initial provider when modal opens
@@ -95,7 +101,31 @@ export const AddAccountModal: React.FC<Props> = ({
   const isProviderLocked = Boolean(initialProvider && initialProvider !== 'all');
   const currentMeta = providersMeta[selectedProviderId] || { name: selectedProviderId };
 
-  // 1. One-click scan local client/CLI credentials
+  // 1. Launch Official OAuth PKCE Login
+  const handleLaunchOAuth = async (pid: string) => {
+    setIsLaunchingOAuth(true);
+    setOauthFeedback(null);
+    try {
+      const res = await startOAuthLogin(pid);
+      if (res.success) {
+        setOauthFeedback(`🚀 ${res.message || '已打开官方授权登录页面，授权完成后即可自动接入'}`);
+      } else {
+        setOauthFeedback(`⚠️ 调起授权页面失败: ${res.message || '未知错误'}`);
+      }
+    } catch (e) {
+      setOauthFeedback(`❌ 调起授权异常: ${e}`);
+    } finally {
+      setIsLaunchingOAuth(false);
+    }
+  };
+
+  const handleCopyAuthUrl = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
+  // 2. One-click scan local client/CLI credentials
   const handleScanProvider = async (pid: string) => {
     setIsScanning(true);
     setScanFeedback(null);
@@ -114,13 +144,15 @@ export const AddAccountModal: React.FC<Props> = ({
 
         onAdd({
           ...match,
+          isLoggedIn: true,
+          status: 'active',
           latestSnapshot: liveSnapshot,
           lastLoginAt: '本地检索实时同步',
         });
         setScanFeedback(`🎉 成功接入本地官方凭据：${match.name} (${match.source || '已同步'})`);
         setTimeout(() => onClose(), 1200);
       } else {
-        setScanFeedback(`ℹ️ ${res.message || '未在本地检索到此厂商登录态。建议使用下方的【网页 Session 提取】或【官方终端授权】'}`);
+        setScanFeedback(`ℹ️ ${res.message || '未在本地检索到此厂商登录态。建议使用上方的【官方网页授权】或【网页 Session 校验】'}`);
       }
     } catch (e) {
       console.warn('Scan local error:', e);
@@ -130,22 +162,22 @@ export const AddAccountModal: React.FC<Props> = ({
     }
   };
 
-  // 2. Launch CLI PKCE terminal login
+  // 3. Launch CLI PKCE terminal login
   const handleLaunchCli = async (pid: string) => {
-    setCliFeedback(null);
+    setOauthFeedback(null);
     try {
       const res = await launchCliLogin(pid);
       if (res.success) {
-        setCliFeedback(`🚀 ${res.message || '已调起官方授权终端，请在浏览器中确认授权'}`);
+        setOauthFeedback(`🚀 ${res.message || '已调起官方授权终端，请在浏览器中确认授权'}`);
       } else {
-        setCliFeedback(`⚠️ ${res.message || '未找到该平台的本地 CLI 登录命令'}`);
+        setOauthFeedback(`⚠️ ${res.message || '未找到该平台的本地 CLI 登录命令'}`);
       }
     } catch (e) {
-      setCliFeedback(`❌ 调起终端失败: ${e}`);
+      setOauthFeedback(`❌ 调起终端失败: ${e}`);
     }
   };
 
-  // 3. Verify and bind pasted browser Session / API Key
+  // 4. Verify and bind pasted browser Session / API Key
   const handleVerifyAndBind = async () => {
     if (!sessionInput.trim()) return;
     setIsVerifyingSession(true);
@@ -159,8 +191,12 @@ export const AddAccountModal: React.FC<Props> = ({
           message: `🎉 验证成功！已连接 ${res.account.name} (${res.account.email})`,
           account: res.account,
         });
-        // Automatically add to list
-        onAdd(res.account);
+        // Automatically add to list with isLoggedIn: true
+        onAdd({
+          ...res.account,
+          isLoggedIn: true,
+          status: 'active',
+        });
         setTimeout(() => {
           onClose();
         }, 1200);
@@ -180,7 +216,7 @@ export const AddAccountModal: React.FC<Props> = ({
     }
   };
 
-  // 4. Fallback: manual form submit
+  // 5. Fallback: manual form submit
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -239,6 +275,7 @@ export const AddAccountModal: React.FC<Props> = ({
       };
     }
 
+    const hasCred = Boolean(credential.trim());
     onAdd({
       id: `manual-${selectedProviderId}-${Date.now()}`,
       name: name.trim(),
@@ -250,14 +287,16 @@ export const AddAccountModal: React.FC<Props> = ({
       quotaMechanism,
       tags: ['手动添加', planName || '自定义'],
       enabled: true,
+      isLoggedIn: hasCred,
+      status: hasCred ? 'active' : 'unauthorized',
       isActiveInCCSwitch: false,
       priority: 1,
       autoFailoverEnabled: true,
-      lastLoginAt: '手动录入',
+      lastLoginAt: hasCred ? '手动录入' : '待授权',
       credentials: {
-        apiKey: credential.trim() || 'custom-key',
+        apiKey: credential.trim() || undefined,
       },
-      latestSnapshot: snapshot,
+      latestSnapshot: hasCred ? snapshot : undefined,
     });
 
     onClose();
@@ -316,19 +355,32 @@ export const AddAccountModal: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs - OAuth PKCE is Primary! */}
         <div className="flex items-center gap-1.5 rounded-xl bg-slate-900/90 border border-slate-800 p-1 mb-5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('oauth_pkce')}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'oauth_pkce'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            <span>1. 官方网页授权</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('local_scan')}
             className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'local_scan'
-                ? 'bg-blue-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            <span>1. 本地凭据穿透</span>
+            <span>2. 本地凭据穿透</span>
           </button>
 
           <button
@@ -340,24 +392,9 @@ export const AddAccountModal: React.FC<Props> = ({
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Globe className="h-3.5 w-3.5" />
-            <span>2. 网页 Session 校验</span>
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>3. 网页 Session 校验</span>
           </button>
-
-          {(selectedProviderId === 'chatgpt' || selectedProviderId === 'claude') && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('cli_pkce')}
-              className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'cli_pkce'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Terminal className="h-3.5 w-3.5" />
-              <span>3. 官方终端授权</span>
-            </button>
-          )}
 
           <button
             type="button"
@@ -373,7 +410,145 @@ export const AddAccountModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Tab 1 Content: Local Scan */}
+        {/* Tab 1 Content: Official OAuth PKCE Login (Primary) */}
+        {activeTab === 'oauth_pkce' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs text-slate-300">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="font-bold text-blue-300 flex items-center gap-1.5">
+                  <Globe className="h-4 w-4 text-blue-400" />
+                  {selectedProviderId === 'chatgpt'
+                    ? 'OpenAI 官方 OAuth PKCE 授权体系'
+                    : `${currentMeta.name} 官方授权接入`}
+                </span>
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  官方正版渠道
+                </span>
+              </div>
+
+              {selectedProviderId === 'chatgpt' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    采用 OpenAI 官方 Codex CLI 标准 OAuth 2.0 PKCE 流程。点击下方按钮后，将在系统外部浏览器打开 OpenAI 授权网关，通过本地回环端口（<code className="text-blue-300 bg-slate-900 px-1 py-0.5 rounded">http://localhost:1455/auth/callback</code>）自动将 Access Token 写入本地授权库，无需手动复制凭证。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all select-all relative">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方授权网址规范:</span>
+                    <span className="text-slate-300">{OPENAI_OAUTH_URL}</span>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyAuthUrl(OPENAI_OAUTH_URL)}
+                        className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 cursor-pointer"
+                      >
+                        {copiedUrl ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        <span>{copiedUrl ? '已复制官方授权网址' : '复制官方授权链接'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'claude' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    通过 Anthropic 官方控制台获取 API Key 或通过 Claude Code 终端协议登录。安全接入 Claude 3.7 Sonnet 及 5h 并发与周度配额追踪。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台网址:</span>
+                    <span>https://console.anthropic.com/settings/keys</span>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'deepseek' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    直达 DeepSeek 开放平台创建官方 API Key。创建完成后直接粘贴，QuotaWatcher 将即时同步账户可用余额（CNY/USD）与近期调用统计。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方开放平台网址:</span>
+                    <span>https://platform.deepseek.com/api_keys</span>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'trae' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    字节跳动 Trae 官方开发者授权。在浏览器中登录 Trae 后，可在【本地凭据穿透】中一键读取本机凭据并同步 500 次/天的高级模型配额。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方入口:</span>
+                    <span>https://www.trae.ai/</span>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'gemini' || selectedProviderId === 'antigravity' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    Google AI Studio 官方控制台授权。直接在 Google 官方平台创建 API 凭据，获取免费的高并发 1500 RPD 额度。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台:</span>
+                    <span>https://aistudio.google.com/app/apikey</span>
+                  </div>
+                </div>
+              ) : selectedProviderId === 'kimi' ? (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    Moonshot Kimi 开放平台官方授权。生成 API Key 并在应用内管理长上下文及周度额度。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方控制台:</span>
+                    <span>https://platform.moonshot.cn/console/api-keys</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 text-[11.5px] text-slate-400 leading-relaxed">
+                  <p>
+                    点击下方按钮唤起 {currentMeta.name} 官方登录与授权控制台。
+                  </p>
+                  <div className="mt-2 rounded-lg bg-slate-950 p-2.5 border border-slate-800 font-mono text-[10.5px] text-slate-300 break-all">
+                    <span className="text-slate-500 block mb-1 font-sans text-[10px]">官方网址:</span>
+                    <span>{PROVIDER_AUTH_URLS[selectedProviderId]?.url || 'https://chatgpt.com/'}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {oauthFeedback && (
+              <div className="rounded-xl border border-blue-500/30 bg-[#080b13] p-3 text-xs font-mono text-blue-200">
+                {oauthFeedback}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleLaunchOAuth(selectedProviderId)}
+                disabled={isLaunchingOAuth}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-blue-900/30 active:scale-98 cursor-pointer disabled:opacity-50"
+              >
+                <Globe className={`h-4 w-4 ${isLaunchingOAuth ? 'animate-spin' : ''}`} />
+                <span>
+                  {selectedProviderId === 'chatgpt'
+                    ? '🚀 唤起 OpenAI 官方网页授权登录 (OAuth PKCE)'
+                    : `🚀 打开 ${currentMeta.name} 官方授权控制台`}
+                </span>
+              </button>
+
+              {(selectedProviderId === 'chatgpt' || selectedProviderId === 'claude') && (
+                <button
+                  type="button"
+                  onClick={() => handleLaunchCli(selectedProviderId)}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 py-2.5 text-xs font-semibold text-purple-300 transition-all cursor-pointer"
+                >
+                  <Terminal className="h-3.5 w-3.5 text-purple-400" />
+                  <span>
+                    {selectedProviderId === 'chatgpt'
+                      ? '💻 启动本地 Codex CLI 官方终端授权'
+                      : '💻 启动 Claude Code CLI 终端登录'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2 Content: Local Scan */}
         {activeTab === 'local_scan' && (
           <div className="space-y-4">
             <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs text-slate-300">
@@ -418,7 +593,7 @@ export const AddAccountModal: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Tab 2 Content: Browser Session Extraction */}
+        {/* Tab 3 Content: Browser Session Extraction */}
         {activeTab === 'browser_session' && (
           <div className="space-y-4">
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-xs text-slate-300">
@@ -500,36 +675,6 @@ export const AddAccountModal: React.FC<Props> = ({
             >
               <CheckCircle2 className={`h-4 w-4 ${isVerifyingSession ? 'animate-spin' : ''}`} />
               <span>{isVerifyingSession ? '正在连接官方端点校验凭证真伪...' : '🚀 实时校验凭证并绑定入库'}</span>
-            </button>
-          </div>
-        )}
-
-        {/* Tab 3 Content: Official CLI PKCE Terminal */}
-        {activeTab === 'cli_pkce' && (
-          <div className="space-y-4">
-            <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4 text-xs text-slate-300">
-              <div className="flex items-center gap-2 font-bold text-purple-300 mb-2">
-                <Terminal className="h-4 w-4 text-purple-400" />
-                <span>官方 CLI 终端回环授权流程 (PKCE)</span>
-              </div>
-              <p className="leading-relaxed text-slate-400">
-                通过系统已安装的官方 CLI 启动本地端口监听，外部浏览器完成授权后，Token 将自动回写至系统本地凭据目录（~/.codex/auth.json 等），安全合规且无需手动复制。
-              </p>
-            </div>
-
-            {cliFeedback && (
-              <div className="rounded-xl border border-purple-500/30 bg-[#080b13] p-3 text-xs font-mono text-purple-200">
-                {cliFeedback}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => handleLaunchCli(selectedProviderId)}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-purple-900/30 active:scale-98 cursor-pointer"
-            >
-              <Terminal className="h-4 w-4" />
-              <span>启动 {currentMeta.name} 官方终端授权流程</span>
             </button>
           </div>
         )}

@@ -12,7 +12,7 @@ import {
   Globe
 } from 'lucide-react';
 import { providersMeta as initialProvidersMeta } from './mock/mockData';
-import { Account, ProviderMeta } from './types';
+import { Account, ProviderMeta, isAccountLoggedIn } from './types';
 import { AccountCard } from './components/AccountCard';
 import { AccountRow } from './components/AccountRow';
 import { ProviderSidebar } from './components/ProviderSidebar';
@@ -57,7 +57,18 @@ const loadStoredAccounts = (): Account[] => {
           'gemini-official',
           'grokbuild-official'
         ];
-        return parsed.filter((a) => !blacklist.includes(a.id) && a.credentials?.apiKey !== 'demo_key');
+        return parsed
+          .filter((a) => !blacklist.includes(a.id) && a.credentials?.apiKey !== 'demo_key')
+          .map((a) => {
+            const loggedIn = isAccountLoggedIn(a);
+            return {
+              ...a,
+              isLoggedIn: loggedIn,
+              status: !loggedIn ? 'unauthorized' : a.latestSnapshot?.isExhausted ? 'exhausted' : 'active',
+              // 未登录的账号绝对不能显示为使用中
+              isActiveInCCSwitch: loggedIn ? Boolean(a.isActiveInCCSwitch) : false,
+            };
+          });
       }
     }
   } catch (e) {
@@ -119,9 +130,12 @@ export const App: React.FC = () => {
           return prev.map((acc) => {
             const matched = res.providers?.find((p) => p.id === acc.ccSwitchProviderId || acc.name.toLowerCase().includes(p.name.toLowerCase()));
             if (matched) {
+              const loggedIn = isAccountLoggedIn(acc);
               return {
                 ...acc,
-                isActiveInCCSwitch: matched.isCurrent,
+                isLoggedIn: loggedIn,
+                // 未登录账号绝不显示为主力使用中
+                isActiveInCCSwitch: loggedIn ? matched.isCurrent : false,
                 ccSwitchProviderId: matched.id,
                 appType: matched.appType,
               };
@@ -178,7 +192,9 @@ export const App: React.FC = () => {
               quotaMechanism: a.quotaMechanism || 'dual_window',
               tags: [a.planName || '官方认证', '本地同步'],
               enabled: true,
-              isActiveInCCSwitch: a.isActiveInCCSwitch || false,
+              isLoggedIn: a.isLoggedIn !== false,
+              status: a.isLoggedIn === false ? 'unauthorized' : 'active',
+              isActiveInCCSwitch: a.isLoggedIn === false ? false : (a.isActiveInCCSwitch || false),
               priority: 1,
               autoFailoverEnabled: true,
               lastLoginAt: '官方实时同步',
@@ -199,14 +215,12 @@ export const App: React.FC = () => {
               (acc) => acc.id === newAcc.id || (acc.provider === newAcc.provider && acc.email === newAcc.email)
             );
             if (existingIdx >= 0) {
-              // Update with authentic real live quota
-              if (newAcc.latestSnapshot) {
-                updated[existingIdx] = {
-                  ...updated[existingIdx],
-                  ...newAcc,
-                  name: updated[existingIdx].name, // preserve user nickname edits
-                };
-              }
+              updated[existingIdx] = {
+                ...updated[existingIdx],
+                ...newAcc,
+                latestSnapshot: newAcc.latestSnapshot || updated[existingIdx].latestSnapshot,
+                name: updated[existingIdx].name, // preserve user nickname edits
+              };
             } else {
               updated.push(newAcc);
               addedCount++;
@@ -361,6 +375,8 @@ export const App: React.FC = () => {
             tags: [detected.planName || '官方认证', '本地同步'],
             priority: 1,
             enabled: true,
+            isLoggedIn: true,
+            status: 'active',
             autoFailoverEnabled: true,
             lastLoginAt: '官方实时同步',
             isActiveInCCSwitch: true,
@@ -407,6 +423,11 @@ export const App: React.FC = () => {
     const target = accounts.find((a) => a.id === id);
     if (!target) return;
 
+    if (!isAccountLoggedIn(target)) {
+      showToast(`⚠️ 账号「${target.name}」尚未授权登录，无法设为主力号源，请先完成授权登录`);
+      return;
+    }
+
     // 1. Update UI state
     setAccounts((prev) =>
       prev.map((acc) => ({
@@ -427,6 +448,13 @@ export const App: React.FC = () => {
   const handleRefresh = async (id: string) => {
     const acc = accounts.find((a) => a.id === id);
     if (!acc) return;
+
+    // Check if account is logged in first!
+    if (!isAccountLoggedIn(acc)) {
+      showToast(`⚠️ 该账号「${acc.name}」尚未授权登录，请先点击【去登录】绑定凭据`);
+      return;
+    }
+
     showToast(`🔄 正在向官方查询「${acc.name}」真实配额与重置时间...`);
     try {
       const res = await fetchRealAccountQuota(acc.id, acc.provider);
@@ -459,6 +487,9 @@ export const App: React.FC = () => {
     try {
       const updated = await Promise.all(
         accounts.map(async (acc) => {
+          if (!isAccountLoggedIn(acc)) {
+            return acc;
+          }
           try {
             const res = await fetchRealAccountQuota(acc.id, acc.provider);
             if (res.success && res.snapshot) {
@@ -474,7 +505,7 @@ export const App: React.FC = () => {
       );
       setAccounts(updated);
       saveAccountsToStorage(updated);
-      showToast('✅ 所有账号官方真实配额与重置倒计时已全部刷新完成');
+      showToast('✅ 所有已授权账号官方真实配额与重置倒计时已全部刷新完成');
     } catch (e) {
       showToast(`❌ 批量刷新异常: ${e}`);
     }
@@ -568,8 +599,13 @@ export const App: React.FC = () => {
 
   // Add new account
   const handleAddAccount = (newAcc: Partial<Account>) => {
+    const hasCred = Boolean(
+      (newAcc.credentials?.apiKey && newAcc.credentials.apiKey.trim() !== '' && newAcc.credentials.apiKey !== 'demo_key') ||
+      (newAcc.credentials?.sessionToken && newAcc.credentials.sessionToken.trim() !== '') ||
+      (newAcc.email && newAcc.email.trim() !== '')
+    );
     const created: Account = {
-      id: `acc-${Date.now()}`,
+      id: newAcc.id || `acc-${Date.now()}`,
       name: newAcc.name || '官方主号',
       email: newAcc.email,
       platform: newAcc.platform || 'custom-api',
@@ -579,10 +615,14 @@ export const App: React.FC = () => {
       tags: newAcc.tags || ['官方授权'],
       classification: newAcc.classification || 'official',
       enabled: true,
+      isLoggedIn: newAcc.isLoggedIn !== undefined ? newAcc.isLoggedIn : hasCred,
+      status: (newAcc.isLoggedIn ?? hasCred) ? 'active' : 'unauthorized',
+      isActiveInCCSwitch: false,
       priority: newAcc.priority || 1,
       autoFailoverEnabled: true,
-      lastLoginAt: '刚刚',
-      latestSnapshot: newAcc.latestSnapshot,
+      lastLoginAt: hasCred ? '刚刚' : '待授权',
+      credentials: newAcc.credentials,
+      latestSnapshot: hasCred ? newAcc.latestSnapshot : undefined,
     };
     setAccounts((prev) => {
       const next = [created, ...prev];
@@ -606,7 +646,7 @@ export const App: React.FC = () => {
     setWindowMode(mode);
   };
 
-  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch);
+  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch && isAccountLoggedIn(a));
   const warningCount = accounts.filter(
     (a) => a.latestSnapshot?.isWarning || a.latestSnapshot?.isExhausted
   ).length;
@@ -845,6 +885,7 @@ export const App: React.FC = () => {
                                 onSetAsActive={handleSetActive}
                                 onDelete={handleDelete}
                                 onUpdateAccount={handleUpdateAccount}
+                                onAuthorize={(acc) => handleOpenAddModal(acc.provider)}
                               />
                             ))}
                           </div>
@@ -861,6 +902,7 @@ export const App: React.FC = () => {
                           onSetAsActive={handleSetActive}
                           onDelete={handleDelete}
                           onUpdateAccount={handleUpdateAccount}
+                          onAuthorize={(acc) => handleOpenAddModal(acc.provider)}
                         />
                       ))
                     )}
@@ -892,6 +934,7 @@ export const App: React.FC = () => {
                                   onSetAsActive={handleSetActive}
                                   onDelete={handleDelete}
                                   onUpdateAccount={handleUpdateAccount}
+                                  onAuthorize={(acc) => handleOpenAddModal(acc.provider)}
                                 />
                               ))}
                             </div>
@@ -908,6 +951,7 @@ export const App: React.FC = () => {
                             onSetAsActive={handleSetActive}
                             onDelete={handleDelete}
                             onUpdateAccount={handleUpdateAccount}
+                            onAuthorize={(acc) => handleOpenAddModal(acc.provider)}
                           />
                         ))}
                       </div>

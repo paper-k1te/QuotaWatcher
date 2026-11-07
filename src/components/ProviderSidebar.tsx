@@ -6,7 +6,7 @@ import {
   Settings,
   BarChart3
 } from 'lucide-react';
-import { Account, ProviderMeta } from '../types';
+import { Account, ProviderMeta, isAccountLoggedIn } from '../types';
 import { ProviderIcon } from './ProviderIcons';
 
 interface Props {
@@ -121,7 +121,7 @@ export const ProviderSidebar: React.FC<Props> = ({
           const meta = providersMeta[providerKey];
           const isSelected = !isSettingsOpen && selectedProvider === providerKey;
           const providerAccounts = accounts.filter((a) => a.provider === providerKey);
-          const hasActiveInCCSwitch = providerAccounts.some((a) => a.isActiveInCCSwitch);
+          const hasActiveInCCSwitch = providerAccounts.some((a) => a.isActiveInCCSwitch && isAccountLoggedIn(a));
           const hasWarning = providerAccounts.some(
             (a) => a.latestSnapshot?.isWarning && !a.latestSnapshot?.isExhausted
           );

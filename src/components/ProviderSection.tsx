@@ -9,7 +9,7 @@ import {
   XCircle,
   Layers
 } from 'lucide-react';
-import { Account, ProviderMeta } from '../types';
+import { Account, ProviderMeta, isAccountLoggedIn } from '../types';
 import { AccountCard } from './AccountCard';
 
 interface Props {
@@ -32,7 +32,7 @@ export const ProviderSection: React.FC<Props> = ({
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Compute stats for this provider
-  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch);
+  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch && isAccountLoggedIn(a));
   const exhaustedCount = accounts.filter((a) => a.latestSnapshot?.isExhausted).length;
   const warningCount = accounts.filter(
     (a) => a.latestSnapshot?.isWarning && !a.latestSnapshot?.isExhausted

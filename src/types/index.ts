@@ -119,6 +119,8 @@ export interface Account {
   quotaMechanism?: 'dual_window' | 'weekly_only' | 'daily_quota' | 'balance_only'; // 专属使用形式 (5h+7天双滚动 / 纯周度 / 每日RPD / 纯余额)
   planExpiresAt?: string; // 订阅到期时间，如 2026-11-30
   enabled: boolean;
+  isLoggedIn?: boolean; // 是否已授权登录
+  status?: 'active' | 'unauthorized' | 'exhausted'; // 账号授权/健康状态
   isActiveInCCSwitch?: boolean; // 是否当前正被 cc-switch 激活使用
   appType?: string; // 对应的 CLI 类型 (claude / codex / gemini / agy)
   ccSwitchProviderId?: string; // 对应 CC-Switch 数据库中的 provider id
@@ -133,3 +135,20 @@ export interface Account {
   };
   latestSnapshot?: QuotaSnapshot;
 }
+
+export const isAccountLoggedIn = (account: Account): boolean => {
+  if (account.isLoggedIn === false) return false;
+  if (account.isLoggedIn === true) return true;
+  const hasKey = Boolean(
+    account.credentials?.apiKey &&
+    account.credentials.apiKey.trim() !== '' &&
+    account.credentials.apiKey !== 'demo_key' &&
+    !account.credentials.apiKey.startsWith('custom-key')
+  );
+  const hasToken = Boolean(
+    account.credentials?.sessionToken &&
+    account.credentials.sessionToken.trim() !== '' &&
+    !account.credentials.sessionToken.startsWith('custom-')
+  );
+  return Boolean(hasKey || hasToken);
+};

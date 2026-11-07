@@ -8,9 +8,10 @@ import {
   PinOff,
   Play, 
   Check, 
-  GripHorizontal
+  GripHorizontal,
+  Key
 } from 'lucide-react';
-import { Account } from '../types';
+import { Account, isAccountLoggedIn } from '../types';
 import { ProviderIcon, QuotaWatcherLogo } from './ProviderIcons';
 import { setAlwaysOnTop, startDragging } from '../services/tauriBridge';
 
@@ -32,7 +33,7 @@ export const TrayMiniWidget: React.FC<Props> = ({
   onSetActiveAccount,
 }) => {
   const [isPinned, setIsPinned] = useState(true);
-  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch);
+  const activeAccount = accounts.find((a) => a.isActiveInCCSwitch && isAccountLoggedIn(a));
 
   const handleTogglePin = () => {
     const nextPin = !isPinned;
@@ -169,27 +170,40 @@ export const TrayMiniWidget: React.FC<Props> = ({
       {/* 4. Scrollable Account List */}
       <div className="flex-1 overflow-y-auto p-2.5 space-y-2 no-scrollbar">
         {accounts.map((acc) => {
+          const isLoggedIn = isAccountLoggedIn(acc);
           const snap = acc.latestSnapshot;
           const isRolling = snap?.kind === 'rolling_window';
           const isBalance = snap?.kind === 'currency_balance';
           const isTier = snap?.kind === 'periodic_tier';
           const isExhausted = snap?.isExhausted;
           const isWarning = snap?.isWarning && !isExhausted;
+          const isActuallyActive = isLoggedIn && acc.isActiveInCCSwitch;
+
+          const rollingUsed = snap?.rollingWindow?.used ?? 0;
+          const rollingTotal = snap?.rollingWindow?.total ?? 50;
+          const rollingRemaining = Math.max(0, rollingTotal - rollingUsed);
+          const rollingRemainingPct = Math.max(0, Math.min(100, Math.round((rollingRemaining / rollingTotal) * 100)));
 
           return (
             <div
               key={acc.id}
               className={`flex items-center justify-between gap-2.5 rounded-xl border p-2.5 transition-all ${
-                acc.isActiveInCCSwitch
+                !isLoggedIn
+                  ? 'border-slate-800/80 bg-[#0a0d16]/80'
+                  : isActuallyActive
                   ? 'border-blue-500/50 bg-[#12182a] shadow-sm'
                   : isExhausted
                   ? 'border-rose-900/40 bg-[#160c12]/70'
+                  : isWarning
+                  ? 'border-amber-900/40 bg-[#16130c]/70'
                   : 'border-slate-800/80 bg-[#0e121e]/80 hover:bg-[#131828]'
               }`}
             >
               {/* Left: Icon & Account Info */}
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-300">
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-slate-300 ${
+                  !isLoggedIn ? 'bg-slate-800/40 border-slate-700/50 text-slate-500' : 'bg-slate-800/80 border-slate-700/60'
+                }`}>
                   <ProviderIcon providerId={acc.provider} className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
@@ -197,62 +211,69 @@ export const TrayMiniWidget: React.FC<Props> = ({
                     <span className="text-[13px] font-medium text-slate-200 truncate">
                       {acc.name}
                     </span>
-                    {acc.isActiveInCCSwitch && (
+                    {!isLoggedIn ? (
+                      <span className="text-[10px] text-amber-400 font-semibold bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded shrink-0">
+                        未登录
+                      </span>
+                    ) : isActuallyActive ? (
                       <span className="text-[10px] text-blue-400 font-semibold bg-blue-500/20 px-1.5 py-0.2 rounded shrink-0">
                         使用中
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <div className="text-[11px] text-slate-400 font-mono truncate">
-                    {acc.email || acc.provider}
+                    {acc.email || (isLoggedIn ? acc.provider : '未授权')}
                   </div>
                 </div>
               </div>
 
-              {/* Middle: Quota Progress / Countdown */}
+              {/* Middle: Quota Progress / Countdown (Displaying remaining!) */}
               <div className="flex flex-col items-end shrink-0 min-w-[80px]">
-                {isRolling && snap?.rollingWindow && (
+                {!isLoggedIn ? (
+                  <span className="text-[11px] font-mono text-amber-400/90">
+                    待授权登录
+                  </span>
+                ) : isRolling && snap?.rollingWindow ? (
                   <>
                     <span className="text-[11px] font-mono font-bold text-slate-200">
-                      {snap.rollingWindow.used}/{snap.rollingWindow.total} 次
+                      余 {rollingRemaining}/{rollingTotal}
                     </span>
                     <div className="mt-1 h-1.5 w-18 overflow-hidden rounded-full bg-slate-800">
                       <div
-                        className={`h-full ${
-                          isExhausted
-                            ? 'bg-rose-500'
-                            : isWarning
-                            ? 'bg-amber-500'
-                            : 'bg-blue-500'
+                        className={`h-full transition-all duration-300 ${
+                          rollingRemainingPct > 50
+                            ? 'bg-blue-500'
+                            : rollingRemainingPct >= 20
+                            ? 'bg-amber-400'
+                            : 'bg-rose-500'
                         }`}
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (snap.rollingWindow.used / snap.rollingWindow.total) * 100
-                          )}%`,
-                        }}
+                        style={{ width: `${rollingRemainingPct}%` }}
                       />
                     </div>
                   </>
-                )}
-
-                {isBalance && snap?.currencyBalance && (
+                ) : isBalance && snap?.currencyBalance ? (
                   <span className="text-sm font-mono font-bold text-emerald-400">
                     {snap.currencyBalance.currency === 'USD' ? '$' : '¥'}
                     {snap.currencyBalance.balance.toFixed(2)}
                   </span>
-                )}
-
-                {isTier && snap?.periodicTier && (
+                ) : isTier && snap?.periodicTier ? (
                   <span className="text-xs font-mono text-sky-400 font-semibold">
-                    {snap.periodicTier.used}/{snap.periodicTier.limit}
+                    余 {Math.max(0, snap.periodicTier.limit - snap.periodicTier.used)}/{snap.periodicTier.limit}
                   </span>
-                )}
+                ) : null}
               </div>
 
-              {/* Right: Switch Button */}
+              {/* Right: Switch Button / Login Button */}
               <div className="shrink-0">
-                {!acc.isActiveInCCSwitch ? (
+                {!isLoggedIn ? (
+                  <button
+                    onClick={onOpenFullApp}
+                    className="p-1.5 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600 hover:text-white transition-colors"
+                    title="前往大看板授权登录"
+                  >
+                    <Key className="h-3.5 w-3.5" />
+                  </button>
+                ) : !isActuallyActive ? (
                   <button
                     onClick={() => onSetActiveAccount(acc.id)}
                     className="p-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-slate-300 hover:bg-blue-600 hover:text-white hover:border-blue-500 transition-colors"
