@@ -145,6 +145,41 @@ export const openProviderLogin = async (
   }
 };
 
+export const launchCliLogin = async (
+  providerId: string
+): Promise<{ success: boolean; message?: string }> => {
+  if (!isTauriEnvironment()) {
+    return { success: false, message: '非桌面环境' };
+  }
+  try {
+    return await invoke<{ success: boolean; message?: string }>(
+      'launch_cli_login',
+      { providerId }
+    );
+  } catch (err) {
+    console.warn('Failed to launch_cli_login:', err);
+    return { success: false, message: String(err) };
+  }
+};
+
+export const parseAndBindSession = async (
+  providerId: string,
+  sessionInput: string
+): Promise<{ success: boolean; account?: any; error?: string }> => {
+  if (!isTauriEnvironment()) {
+    return { success: false, error: '非桌面环境' };
+  }
+  try {
+    return await invoke<{ success: boolean; account?: any; error?: string }>(
+      'parse_and_bind_session',
+      { providerId, sessionInput }
+    );
+  } catch (err) {
+    console.warn('Failed to parse_and_bind_session:', err);
+    return { success: false, error: String(err) };
+  }
+};
+
 export const checkCCSwitchInstalled = async (): Promise<CCSwitchDetectionResult> => {
   if (!isTauriEnvironment()) {
     // In web browser mock mode: simulate successful connection

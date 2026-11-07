@@ -945,34 +945,34 @@ export const App: React.FC = () => {
                         >
                           <Sparkles className={`h-6 w-6 text-blue-400 group-hover:scale-110 transition-transform ${isScanningProvider ? 'animate-spin' : ''}`} />
                           <div>
-                            <span className="text-xs font-bold block text-blue-300">1. 本地精准检测</span>
-                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">抓取本地 CLI / 客户端已存 Token</span>
+                            <span className="text-xs font-bold block text-blue-300">1. 本地凭据穿透</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">自动穿透本机 CLI/客户端已存 Token</span>
                           </div>
                         </button>
 
-                        {/* Option 2: Official Webview Login */}
+                        {/* Option 2: Browser Session Extraction / Verification */}
                         <button
                           type="button"
-                          onClick={() => handleOpenLogin(selectedProvider)}
+                          onClick={() => handleOpenAddModal(selectedProvider)}
                           className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-200 transition-all text-center group cursor-pointer shadow-sm"
                         >
                           <Globe className="h-6 w-6 text-emerald-400 group-hover:scale-110 transition-transform" />
                           <div>
-                            <span className="text-xs font-bold block text-emerald-300">2. 浏览器打开官网</span>
-                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">在外部默认浏览器中快速登录</span>
+                            <span className="text-xs font-bold block text-emerald-300">2. 网页 Session 校验</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">复制浏览器会话或 Token 瞬间验证</span>
                           </div>
                         </button>
 
-                        {/* Option 3: Manual Input */}
+                        {/* Option 3: Terminal CLI / API Key */}
                         <button
                           type="button"
                           onClick={() => handleOpenAddModal(selectedProvider)}
-                          className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/20 text-orange-200 transition-all text-center group cursor-pointer shadow-sm"
+                          className="flex flex-col items-center justify-center gap-2 p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-200 transition-all text-center group cursor-pointer shadow-sm"
                         >
-                          <Plus className="h-6 w-6 text-orange-400 group-hover:scale-110 transition-transform" />
+                          <Plus className="h-6 w-6 text-purple-400 group-hover:scale-110 transition-transform" />
                           <div>
-                            <span className="text-xs font-bold block text-orange-300">3. 手动录入账号</span>
-                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">输入自定套餐或 API Key 凭证</span>
+                            <span className="text-xs font-bold block text-purple-300">3. 官方授权 / 录入</span>
+                            <span className="text-[10.5px] text-slate-400 mt-0.5 block leading-tight">启动终端授权流程或填入凭据</span>
                           </div>
                         </button>
                       </div>

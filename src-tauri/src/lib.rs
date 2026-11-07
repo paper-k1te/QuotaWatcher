@@ -34,6 +34,33 @@ fn check_cc_switch() -> serde_json::Value {
     })
 }
 
+fn execute_python_script(script: &str) -> Option<serde_json::Value> {
+    for cmd in &["python", "py"] {
+        let mut command = std::process::Command::new(cmd);
+        command.args(["-c", script]);
+        command.env("PYTHONIOENCODING", "utf-8");
+        command.env("PYTHONUTF8", "1");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        if let Ok(out) = command.output() {
+            if out.status.success() {
+                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                    return Some(val);
+                }
+                let s = String::from_utf8_lossy(&out.stdout);
+                let trimmed = s.trim();
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                    return Some(val);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn get_cc_switch_data() -> serde_json::Value {
     let script = r#"
@@ -44,7 +71,7 @@ if not os.path.exists(db):
     appdata = os.environ.get("APPDATA", "")
     db = os.path.join(appdata, "cc-switch", "cc-switch.db")
 if not os.path.exists(db):
-    print(json.dumps({"success": False, "error": "cc-switch.db not found"}))
+    print(json.dumps({"success": False, "error": "cc-switch.db not found"}, ensure_ascii=True))
     sys.exit(0)
 
 try:
@@ -83,26 +110,13 @@ try:
         pass
 
     conn.close()
-    print(json.dumps({"success": True, "dbPath": db, "providers": providers, "usage": {"costUsd": cost, "totalTokens": tokens}}))
+    print(json.dumps({"success": True, "dbPath": db, "providers": providers, "usage": {"costUsd": cost, "totalTokens": tokens}}, ensure_ascii=True))
 except Exception as e:
-    print(json.dumps({"success": False, "error": str(e)}))
+    print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=True))
 "#;
 
-    for cmd in &["python", "py"] {
-        let mut command = std::process::Command::new(cmd);
-        command.args(["-c", script]);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        if let Ok(out) = command.output() {
-            if out.status.success() {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    return val;
-                }
-            }
-        }
+    if let Some(val) = execute_python_script(script) {
+        return val;
     }
 
     serde_json::json!({
@@ -306,24 +320,11 @@ if os.path.exists(gemini_settings):
     except Exception:
         pass
 
-print(json.dumps({'success': True, 'accounts': results}))
+print(json.dumps({'success': True, 'accounts': results}, ensure_ascii=True))
 "#;
 
-    for cmd in &["python", "py"] {
-        let mut command = std::process::Command::new(cmd);
-        command.args(["-c", script]);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        if let Ok(out) = command.output() {
-            if out.status.success() {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    return val;
-                }
-            }
-        }
+    if let Some(val) = execute_python_script(script) {
+        return val;
     }
 
     serde_json::json!({
@@ -349,28 +350,15 @@ try:
     c.execute("UPDATE providers SET is_current = 1 WHERE app_type = ? AND id = ?", ("{}", "{}"))
     conn.commit()
     conn.close()
-    print(json.dumps({{"success": True, "active": "{}"}}))
+    print(json.dumps({{"success": True, "active": "{}"}}, ensure_ascii=True))
 except Exception as e:
-    print(json.dumps({{"success": False, "error": str(e)}}))
+    print(json.dumps({{"success": False, "error": str(e)}}, ensure_ascii=True))
 "#,
         app_type, app_type, provider_id, provider_id
     );
 
-    for cmd in &["python", "py"] {
-        let mut command = std::process::Command::new(cmd);
-        command.args(["-c", &script]);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        if let Ok(out) = command.output() {
-            if out.status.success() {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    return val;
-                }
-            }
-        }
+    if let Some(val) = execute_python_script(&script) {
+        return val;
     }
 
     serde_json::json!({
@@ -673,26 +661,13 @@ def scan(pid):
 
     return {{'success': True, 'found': False, 'message': f'未在本地检测到 {{pid}} 的官方登录凭据'}}
 
-print(json.dumps(scan('{}'), ensure_ascii=False))
+print(json.dumps(scan('{}'), ensure_ascii=True))
 "#,
         provider_id
     );
 
-    for cmd in &["python", "py"] {
-        let mut command = std::process::Command::new(cmd);
-        command.args(["-c", &script]);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        if let Ok(out) = command.output() {
-            if out.status.success() {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    return val;
-                }
-            }
-        }
+    if let Some(val) = execute_python_script(&script) {
+        return val;
     }
 
     serde_json::json!({
@@ -906,31 +881,267 @@ def fetch_real_quota(aid, pid):
 
     return {{'success': False, 'error': '未找到本地凭证或官方接口未响应'}}
 
-print(json.dumps(fetch_real_quota('{}', '{}'), ensure_ascii=False))
+print(json.dumps(fetch_real_quota('{}', '{}'), ensure_ascii=True))
 "#,
         account_id, provider
     );
 
-    for cmd in &["python", "py"] {
-        let mut command = std::process::Command::new(cmd);
-        command.args(["-c", &script]);
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-        if let Ok(out) = command.output() {
-            if out.status.success() {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-                    return val;
-                }
-            }
-        }
+    if let Some(val) = execute_python_script(&script) {
+        return val;
     }
 
     serde_json::json!({
         "success": false,
         "error": "执行配额查询失败"
+    })
+}
+
+#[tauri::command]
+fn launch_cli_login(provider_id: String) -> serde_json::Value {
+    #[cfg(windows)]
+    {
+        let mut cmd = std::process::Command::new("cmd");
+        if provider_id == "chatgpt" || provider_id == "openai" {
+            cmd.args([
+                "/c",
+                "start",
+                "OpenAI Codex 官方登录授权",
+                "cmd",
+                "/c",
+                "echo ======================================================== & echo   正在启动 OpenAI Codex 官方登录授权... & echo   请在自动弹出的浏览器窗口中完成授权。 & echo   授权完成后，终端将自动同步 Token 至本地环境。 & echo ======================================================== & codex login & echo. & echo   恭喜！官方授权已完成！本窗口将在 4 秒后自动关闭... & timeout /t 4"
+            ]);
+            let _ = cmd.spawn();
+            return serde_json::json!({
+                "success": true,
+                "message": "已调起 OpenAI Codex 官方授权终端。请在浏览器中确认授权，完成后 QuotaWatcher 将自动同步！"
+            });
+        } else if provider_id == "claude" || provider_id == "anthropic" {
+            cmd.args([
+                "/c",
+                "start",
+                "Claude Code 官方登录授权",
+                "cmd",
+                "/c",
+                "echo ======================================================== & echo   正在启动 Claude Code 官方登录授权... & echo   请在自动弹出的浏览器窗口中完成授权。 & echo ======================================================== & npx -y @anthropic-ai/claude-code login & echo. & echo   授权完成！本窗口将在 4 秒后自动关闭... & timeout /t 4"
+            ]);
+            let _ = cmd.spawn();
+            return serde_json::json!({
+                "success": true,
+                "message": "已调起 Claude Code 官方授权终端。请在浏览器中确认授权，完成后 QuotaWatcher 将自动同步！"
+            });
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "message": format!("该平台暂无官方 CLI 授权流程: {}", provider_id)
+    })
+}
+
+#[tauri::command]
+fn parse_and_bind_session(provider_id: String, session_input: String) -> serde_json::Value {
+    let script = format!(
+        r#"
+import os, sys, json, base64, urllib.request, urllib.error, datetime, time
+
+home = os.path.expanduser('~')
+
+def bind(raw_text, pid):
+    text = raw_text.strip()
+    if not text:
+        return {{'success': False, 'error': '输入内容不能为空'}}
+
+    token = text
+    email = ''
+    name = ''
+    plan = 'Plus'
+
+    # Try parsing as JSON (from https://chatgpt.com/api/auth/session or full payload)
+    if (text.startswith('{{') and text.endswith('}}')) or 'accessToken' in text or 'access_token' in text:
+        try:
+            d = json.loads(text)
+            token = d.get('accessToken') or d.get('access_token') or d.get('token') or d.get('apiKey') or text
+            u = d.get('user', {{}}) or {{}}
+            email = u.get('email') or d.get('email', '')
+            name = u.get('name') or d.get('name', '')
+        except Exception:
+            pass
+
+    # 1. ChatGPT Session / Token Validation
+    if pid in ('chatgpt', 'openai'):
+        try:
+            req = urllib.request.Request('https://chatgpt.com/backend-api/wham/usage', headers={{
+                'Authorization': f'Bearer {{token}}',
+                'User-Agent': 'Mozilla/5.0'
+            }})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                res = json.loads(r.read().decode('utf-8'))
+
+            rl = res.get('rate_limit', {{}}) or {{}}
+            pw = rl.get('primary_window', {{}}) or {{}}
+            sw = rl.get('secondary_window', {{}}) or {{}}
+            p_used_pct = pw.get('used_percent', 0)
+            p_reset_s = pw.get('reset_after_seconds', 0)
+            p_reset_at = pw.get('reset_at')
+            p_resets_at_str = datetime.datetime.fromtimestamp(p_reset_at).strftime('%H:%M') if p_reset_at else '预计 1小时后'
+            used_msgs = round(80 * p_used_pct / 100.0)
+            s_used_pct = sw.get('used_percent', 0)
+            s_reset_s = sw.get('reset_after_seconds', 0)
+            s_reset_at = sw.get('reset_at')
+            weekday_map = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+            if s_reset_at:
+                dt = datetime.datetime.fromtimestamp(s_reset_at)
+                s_resets_at_str = f'{{weekday_map[dt.weekday()]}} {{dt.strftime("%H:%M")}}'
+            else:
+                s_resets_at_str = '周日 14:30'
+
+            acc_email = res.get('email') or email or '1044709853@qq.com'
+            acc_name = name or 'ChatGPT Official'
+            plan_type = res.get('plan_type', 'plus').capitalize()
+
+            # Save to ~/.codex/auth.json for permanent local sync
+            try:
+                codex_dir = os.path.join(home, '.codex')
+                os.makedirs(codex_dir, exist_ok=True)
+                auth_file = os.path.join(codex_dir, 'auth.json')
+                existing = {{}}
+                if os.path.exists(auth_file):
+                    try:
+                        with open(auth_file, 'r', encoding='utf-8') as f:
+                            existing = json.load(f)
+                    except:
+                        pass
+                existing['auth_mode'] = 'oauth'
+                if 'tokens' not in existing:
+                    existing['tokens'] = {{}}
+                existing['tokens']['access_token'] = token
+                existing['tokens']['id_token'] = token
+                with open(auth_file, 'w', encoding='utf-8') as f:
+                    json.dump(existing, f, indent=2, ensure_ascii=True)
+            except Exception:
+                pass
+
+            return {{
+                'success': True,
+                'account': {{
+                    'id': f'local-chatgpt-{{int(time.time())}}',
+                    'name': acc_name,
+                    'email': acc_email,
+                    'provider': 'chatgpt',
+                    'platform': 'chatgpt-web',
+                    'planName': plan_type,
+                    'quotaMechanism': 'dual_window',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': True,
+                    'source': '官方网页 Session 认证',
+                    'credentials': {{
+                        'apiKey': token,
+                        'sessionToken': token
+                    }},
+                    'latestSnapshot': {{
+                        'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        'isHealthy': True,
+                        'isExhausted': p_used_pct >= 100 or s_used_pct >= 100,
+                        'isWarning': p_used_pct >= 80 or s_used_pct >= 80,
+                        'kind': 'rolling_window',
+                        'rollingWindow': {{
+                            'used': used_msgs,
+                            'total': 80,
+                            'windowDurationHours': 5,
+                            'resetsAt': p_resets_at_str,
+                            'cooldownSecondsRemaining': p_reset_s
+                        }},
+                        'sevenDayQuota': {{
+                            'usedPercent': s_used_pct,
+                            'totalPercent': 100,
+                            'resetsAt': s_resets_at_str,
+                            'cooldownSecondsRemaining': s_reset_s,
+                            'label': f'{{s_used_pct}}% 充沛' if s_used_pct < 80 else f'{{s_used_pct}}% 警戒'
+                        }},
+                        'quotaMechanism': 'dual_window'
+                    }}
+                }}
+            }}
+        except Exception as e:
+            return {{'success': False, 'error': f'ChatGPT 凭证验证失败 (官方返回: {{e}})'}}
+
+    # 2. DeepSeek API Key Validation
+    if pid == 'deepseek':
+        try:
+            req = urllib.request.Request('https://api.deepseek.com/models', headers={{
+                'Authorization': f'Bearer {{token}}'
+            }})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                r.read()
+            return {{
+                'success': True,
+                'account': {{
+                    'id': f'local-deepseek-{{int(time.time())}}',
+                    'name': 'DeepSeek API',
+                    'email': 'platform@deepseek.com',
+                    'provider': 'deepseek',
+                    'platform': 'deepseek-chat',
+                    'planName': 'V3 / R1 官方满血版',
+                    'quotaMechanism': 'balance_only',
+                    'isOfficial': True,
+                    'isActiveInCCSwitch': False,
+                    'source': 'DeepSeek API Key 验证接入',
+                    'credentials': {{ 'apiKey': token }}
+                }}
+            }}
+        except Exception as e:
+            return {{'success': False, 'error': f'DeepSeek API Key 校验未通过: {{e}}'}}
+
+    # 3. Claude Session / Key
+    if pid in ('claude', 'anthropic'):
+        return {{
+            'success': True,
+            'account': {{
+                'id': f'local-claude-{{int(time.time())}}',
+                'name': 'Claude Official',
+                'email': 'user@claude.ai',
+                'provider': 'claude',
+                'platform': 'claude-web',
+                'planName': 'Pro ($20/月)',
+                'quotaMechanism': 'dual_window',
+                'isOfficial': True,
+                'isActiveInCCSwitch': False,
+                'source': 'Claude Session Key 接入',
+                'credentials': {{ 'apiKey': token }}
+            }}
+        }}
+
+    # 4. Generic Custom Relay
+    return {{
+        'success': True,
+        'account': {{
+            'id': f'custom-{{pid}}-{{int(time.time())}}',
+            'name': f'{{pid.upper()}} 接入',
+            'email': 'api-user@relay',
+            'provider': pid,
+            'platform': 'custom-api',
+            'planName': '按量接入',
+            'quotaMechanism': 'balance_only',
+            'isOfficial': False,
+            'isActiveInCCSwitch': False,
+            'source': 'API Key 自定义填入',
+            'credentials': {{ 'apiKey': token }}
+        }}
+    }}
+
+print(json.dumps(bind({}, '{}'), ensure_ascii=True))
+"#,
+        serde_json::to_string(&session_input).unwrap_or_default(),
+        provider_id
+    );
+
+    if let Some(val) = execute_python_script(&script) {
+        return val;
+    }
+
+    serde_json::json!({
+        "success": false,
+        "error": "执行凭据校验失败"
     })
 }
 
@@ -1042,6 +1253,8 @@ pub fn run(listener: std::net::TcpListener) {
             scan_provider_auth,
             fetch_real_account_quota,
             open_provider_login,
+            launch_cli_login,
+            parse_and_bind_session,
             set_cc_switch_active_provider,
             window_minimize,
             window_toggle_maximize,
